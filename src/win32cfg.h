@@ -121,9 +121,6 @@
 /* Pathname separator character ('/' on Unix). */
 #define PATHNAME_SEPARATOR '\\'
 
-/* Define to a function that returns a random number. */
-#define RANDOM rand
-
 /* The size of `float', as computed by sizeof. */
 #define SIZEOF_FLOAT 4
 

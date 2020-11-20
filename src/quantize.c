@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 
 /* Invariant: (0<=x<256) ==> (srgb_revgamma[srgb_gamma[x] >> 7] <= x). */
 
@@ -1092,9 +1093,10 @@ colormap_image_floyd_steinberg(Gif_Image *gfi, uint8_t *all_new_data,
   /* Use the same random values on each call in an attempt to minimize
      "jumping dithering" effects on animations */
   if (!random_values) {
+    srand(time(NULL)); // init random number generator
     random_values = Gif_NewArray(int32_t, N_RANDOM_VALUES);
     for (i = 0; i < N_RANDOM_VALUES; i++)
-      random_values[i] = RANDOM() % (DITHER_SCALE_M1 * 2) - DITHER_SCALE_M1;
+      random_values[i] = rand() % (DITHER_SCALE_M1 * 2) - DITHER_SCALE_M1;
   }
   for (i = 0; i < gfi->width + 2; i++) {
     j = (i + gfi->left) * 3;

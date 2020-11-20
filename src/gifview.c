@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 #if HAVE_UNISTD_H
 # include <unistd.h>
 #endif
@@ -879,12 +880,13 @@ unoptimized_frame(Gt_Viewer *viewer, int frame, int slow)
   }
 
   /* kill some old frames if over the memory limit */
+  srand(time(NULL)); // init random number generator
   while (pixel_memory_limit_kb != (unsigned) -1
          && pixel_memory_limit_kb < pixel_memory_kb
          && viewer->n_unoptimized_frames > 1) {
     int killidx, killframe, i = 0;
     do {
-      killidx = random() % viewer->n_unoptimized_frames;
+      killidx = rand() % viewer->n_unoptimized_frames;
       killframe = viewer->unoptimized_frames[killidx].user_data;
       ++i;
     } while (killframe == frame

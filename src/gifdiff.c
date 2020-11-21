@@ -559,7 +559,7 @@ main(int argc, char *argv[])
       break;
 
      case VERSION_OPT:
-      printf("gifdiff (LCDF Gifsicle) %s\n", VERSION);
+      printf("gifdiff (LCDF Gifsicle) %s\n", GIF_VERSION);
       printf("Copyright (C) 1998-2019 Eddie Kohler\n\
 This is free software; see the source for copying conditions.\n\
 There is NO warranty, not even for merchantability or fitness for a\n\

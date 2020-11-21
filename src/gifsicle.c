@@ -1452,9 +1452,9 @@ main(int argc, char *argv[])
   /* Check SIZEOF constants (useful for Windows). If these assertions fail,
      you've used the wrong Makefile. You should've used Makefile.w32 for
      32-bit Windows and Makefile.w64 for 64-bit Windows. */
-  static_assert(sizeof(unsigned int) == SIZEOF_UNSIGNED_INT, "unsigned int has the wrong size.");
-  static_assert(sizeof(unsigned long) == SIZEOF_UNSIGNED_LONG, "unsigned long has the wrong size.");
-  static_assert(sizeof(void*) == SIZEOF_VOID_P, "void* has the wrong size.");
+//  static_assert(sizeof(unsigned int) == SIZEOF_UNSIGNED_INT, "unsigned int has the wrong size.");
+//  static_assert(sizeof(unsigned long) == SIZEOF_UNSIGNED_LONG, "unsigned long has the wrong size.");
+//  static_assert(sizeof(void*) == SIZEOF_VOID_P, "void* has the wrong size.");
 
   clp = Clp_NewParser(argc, (const char * const *)argv, sizeof(options) / sizeof(options[0]), options);
 
@@ -2121,9 +2121,9 @@ main(int argc, char *argv[])
 
      case VERSION_OPT:
 #ifdef GIF_UNGIF
-      printf("LCDF Gifsicle %s (ungif)\n", VERSION);
+      printf("LCDF Gifsicle %s (ungif)\n", GIF_VERSION);
 #else
-      printf("LCDF Gifsicle %s\n", VERSION);
+      printf("LCDF Gifsicle %s\n", GIF_VERSION);
 #endif
       printf("Copyright (C) 1997-2019 Eddie Kohler\n\
 This is free software; see the source for copying conditions.\n\

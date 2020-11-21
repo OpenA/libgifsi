@@ -35,15 +35,10 @@ http://www.lcdf.org/gifsicle/
 Building Gifsicle on UNIX
 -------------------------
 
-Type `./configure`, then `make`.
+Type `mkdir build && cd build`, then `cmake ..`.
 
-If `./configure` does not exist (you downloaded from Github), run
-`autoreconf -i` first.
-
-`./configure` accepts the usual options; see `INSTALL` for details.
-To build without gifview (for example, if you don't have X11), use
-`./configure --disable-gifview`. To build without gifdiff,
-use `./configure --disable-gifdiff`.
+`cmake ..` accepts the usual options; type `cmake .. -LH` for list all supported options.
+For example, to build with gifdiff, use `cmake .. -DBUILD_GIFDIFF=1`.
 
 `make install` will build and install Gifsicle and its manual page
 (under /usr/local by default).

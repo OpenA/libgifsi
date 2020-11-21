@@ -5,12 +5,7 @@ Makefile
 Makefile.in
 aclocal.m4
 autom4te*
-config.cache
 config.h
-config.h.in
-config.h.in~
-config.log
-config.status
 configure
 depcomp
 gifdiff
@@ -28,3 +23,4 @@ stamp-h*
 ungifsicle-*.rpm
 ungifsicle-*.tar.gz
 compile
+build

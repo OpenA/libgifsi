@@ -1,0 +1,53 @@
+/* include/config.h.  Generated from config.h.in by configure.
+ * include/config.h.in.  Generated from configure.ac by autoheader.
+ */
+
+/* libgifsi version */
+#define GIFSI_VERSION "@VERSION@"
+#define GIFSI_VERSION_MAJOR @VERSION_MAJOR@
+#define GIFSI_VERSION_MINOR @VERSION_MINOR@
+#define GIFSI_VERSION_PATCH @VERSION_PATCH@
+
+/* Define to 1 if multithreading support is available. */
+#cmakedefine ENABLE_THREADS 1
+
+/* Define to 1 if SIMD types should be used. */
+#cmakedefine HAVE_SIMD 1
+
+/* Defined 1 if vector function/type are supported */
+#cmakedefine HAVE_VECTOR_SIZE_VECTOR_TYPES     1
+#cmakedefine HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES 1
+#cmakedefine HAVE___BUILTIN_SHUFFLEVECTOR      1
+
+/* Defined 1 if you system have the listed header files. */
+#cmakedefine HAVE_STRING_H 1 // <string.h>
+
+/* Defined as 1 if the following functions are supported */
+#cmakedefine HAVE_STRERROR 1
+#cmakedefine HAVE_STRTOUL  1
+#cmakedefine HAVE_MKSTEMP  1
+#cmakedefine HAVE_POW      1
+
+/* Defined as 1 if the following types are supported */
+#cmakedefine HAVE_UINTPTR_T 1
+#cmakedefine HAVE_UINT64_T  1
+#cmakedefine HAVE_INT64_T   1
+
+/* Pathname separator character ('\' on Windows). */
+#define PATHNAME_SEPARATOR '\\'
+
+/* Need _setmode under MS-DOS, to set stdin/stdout to binary mode */
+/* Need _fsetmode under OS/2 for the same reason */
+/* Windows has _isatty and _snprintf, not the normal versions */
+#include <fcntl.h>
+#include <io.h>
+#define isatty   _isatty
+#define snprintf _snprintf
+
+/* Define known-width integer types. */
+typedef   signed __int8   int8_t;
+typedef unsigned __int8  uint8_t;
+typedef   signed __int16  int16_t;
+typedef unsigned __int16 uint16_t;
+typedef   signed __int32  int32_t;
+typedef unsigned __int32 uint32_t;

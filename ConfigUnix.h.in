@@ -1,0 +1,54 @@
+/* include/config.h.  Generated from config.h.in by configure.
+ * include/config.h.in.  Generated from configure.ac by autoheader.
+ */
+
+/* libgifsi version */
+#define GIFSI_VERSION "@VERSION@"
+#define GIFSI_VERSION_MAJOR @VERSION_MAJOR@
+#define GIFSI_VERSION_MINOR @VERSION_MINOR@
+#define GIFSI_VERSION_PATCH @VERSION_PATCH@
+
+/* Define to 1 if multithreading support is available. */
+#cmakedefine ENABLE_THREADS 1
+
+/* Defined 1 if pthread have the following functions. */
+#cmakedefine HAVE___SYNC_ADD_AND_FETCH 1
+
+/* Define to 1 if SIMD types should be used. */
+#cmakedefine HAVE_SIMD 1
+
+/* Defined 1 if vector function/type are supported */
+#cmakedefine HAVE_VECTOR_SIZE_VECTOR_TYPES     1
+#cmakedefine HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES 1
+#cmakedefine HAVE___BUILTIN_SHUFFLEVECTOR      1
+
+/* Defined 1 if you system have the listed header files. */
+#cmakedefine HAVE_SYS_TYPES_H 1 // <sys/types.h>
+#cmakedefine HAVE_SYS_STAT_H  1 // <sys/stat.h>
+#cmakedefine HAVE_INTTYPES_H  1 // <inttypes.h>
+#cmakedefine HAVE_UNISTD_H    1 // <unistd.h>
+#cmakedefine HAVE_STRING_H    1 // <string.h>
+
+/* Defined as 1 if the following functions are supported */
+#cmakedefine HAVE_STRERROR 1
+#cmakedefine HAVE_STRTOUL  1
+#cmakedefine HAVE_MKSTEMP  1
+#cmakedefine HAVE_POW      1
+
+/* Defined as 1 if the following types are supported */
+#cmakedefine HAVE_UINTPTR_T 1
+#cmakedefine HAVE_UINT64_T  1
+#cmakedefine HAVE_INT64_T   1
+
+/* Pathname separator character ('/' on Unix). */
+#define PATHNAME_SEPARATOR '/'
+
+/* Define known-width integer types. */
+#ifdef HAVE_INTTYPES_H
+# include <inttypes.h>
+#elif defined(HAVE_SYS_TYPES_H)
+# include <sys/types.h>
+typedef u_int8_t  uint8_t;
+typedef u_int16_t uint16_t;
+typedef u_int32_t uint32_t;
+#endif

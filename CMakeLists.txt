@@ -133,32 +133,6 @@ endif()
 unset(BUILD_GIFDIFF)
 
 #
-# Optional: -DBUILD_GIFVIEW=1
-#
-option(BUILD_GIFVIEW "Build gifview program." OFF)
-
-if(BUILD_GIFVIEW)
-  message(" Build program      = gifview")
-  add_executable(gifview
-    src/clp.c
-    src/gifx.c
-    src/gifview.c
-  )
-  target_link_libraries(gifview libgifsi)
-
-  install(TARGETS gifview
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  )
-  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/gifview.1
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-  )
-  if(UNIX AND NOT (BEOS OR HAIKU))
-    target_link_libraries(gifview X11)
-  endif()
-endif()
-unset(BUILD_GIFVIEW)
-
-#
 # Optional: -DWITH_MULTITHREAD=1
 #
 option(WITH_MULTITHREAD "Enable multithreading support if available." OFF)

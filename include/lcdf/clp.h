@@ -32,6 +32,7 @@ typedef struct Clp_Option Clp_Option;
 typedef struct Clp_Parser Clp_Parser;
 typedef struct Clp_ParserState Clp_ParserState;
 
+#define GIF_VERSION "1.92"
 
 /** @brief Option description.
  *

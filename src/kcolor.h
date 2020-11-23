@@ -9,7 +9,7 @@
 
 #ifndef GIFSICLE_KCOLOR_H
 #define GIFSICLE_KCOLOR_H
-#include <lcdfgif/gif.h>
+#include <gifsi.h>
 #include <assert.h>
 
 /* kcolor: a 3D vector, each component has 15 bits of precision */

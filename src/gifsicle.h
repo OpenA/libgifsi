@@ -9,7 +9,7 @@
 
 #ifndef GIFSICLE_H
 #define GIFSICLE_H
-#include <lcdfgif/gif.h>
+#include <gifsi.h>
 #include <lcdf/clp.h>
 #ifdef __GNUC__
 #define NORETURN __attribute__ ((noreturn))

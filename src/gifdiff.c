@@ -7,8 +7,7 @@
    as this notice is kept intact and this source code is made available. There
    is no warranty, express or implied. */
 
-#include <config.h>
-#include <lcdfgif/gif.h>
+#include <gifsi.h>
 #include <lcdf/clp.h>
 #include <stdarg.h>
 #include <stdio.h>

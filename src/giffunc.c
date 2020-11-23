@@ -7,10 +7,7 @@
    will, as long as this notice is kept intact and this source code is made
    available. There is no warranty, express or implied. */
 
-#if HAVE_CONFIG_H
-# include <config.h>
-#endif
-#include <lcdfgif/gif.h>
+#include <gifsi.h>
 #include <string.h>
 #include <stdarg.h>
 #ifdef __cplusplus
@@ -834,9 +831,8 @@ Gif_Debug(char *x, ...)
     va_end(val);
 }
 
-
-#if !GIF_ALLOCATOR_DEFINED
-void* Gif_Realloc(void* p, size_t s, size_t n, const char* file, int line) {
+void*
+Gif_Realloc(void* p, size_t s, size_t n, const char* file, int line) {
     (void) file, (void) line;
     if (s == 0 || n == 0)
         Gif_Free(p);
@@ -845,11 +841,9 @@ void* Gif_Realloc(void* p, size_t s, size_t n, const char* file, int line) {
     return (void*) 0;
 }
 
-#undef Gif_Free
 void Gif_Free(void* p) {
     free(p);
 }
-#endif
 
 #ifdef __cplusplus
 }

@@ -7,10 +7,7 @@
    will, as long as this notice is kept intact and this source code is made
    available. There is no warranty, express or implied. */
 
-#if HAVE_CONFIG_H
-# include <config.h>
-#endif
-#include <lcdfgif/gif.h>
+#include <gifsi.h>
 #include <assert.h>
 #include <string.h>
 #ifdef __cplusplus

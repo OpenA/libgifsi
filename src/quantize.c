@@ -325,7 +325,7 @@ void kchist_make(kchist* kch, Gif_Stream* gfs, uint32_t* ntransp_store) {
 
         /* if this image has background disposal, count its size towards the
            background's pixel count */
-        if (gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+        if (gfi->disposal == GD_Background)
             nbackground += (unsigned) gfi->width * (unsigned) gfi->height;
 
         /* throw out compressed image if necessary */

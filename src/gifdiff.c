@@ -126,11 +126,11 @@ apply_image(int is_second, Gif_Stream *gfs, int imageno, uint16_t background)
 
   /* if this image's disposal is 'previous', save the post-disposal version in
      'scratch' */
-  if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+  if (gfi->disposal == GD_Previous) {
     copy_area(scratch, data, gfi->left, gfi->top, gfi->width, gfi->height);
-    if (pgfi && pgfi->disposal == GIF_DISPOSAL_PREVIOUS)
+    if (pgfi && pgfi->disposal == GD_Previous)
       copy_area(scratch, last, pgfi->left, pgfi->top, pgfi->width, pgfi->height);
-    else if (pgfi && pgfi->disposal == GIF_DISPOSAL_BACKGROUND)
+    else if (pgfi && pgfi->disposal == GD_Background)
       fill_area(scratch, pgfi->left, pgfi->top, pgfi->width, pgfi->height, background);
   }
 
@@ -142,9 +142,9 @@ apply_image(int is_second, Gif_Stream *gfs, int imageno, uint16_t background)
   {
     int lf = 0, tp = 0, rt = 0, bt = 0;
     expand_bounds(&lf, &tp, &rt, &bt, gfi);
-    if (pgfi && pgfi->disposal == GIF_DISPOSAL_PREVIOUS)
+    if (pgfi && pgfi->disposal == GD_Previous)
       expand_bounds(&lf, &tp, &rt, &bt, pgfi);
-    else if (pgfi && pgfi->disposal == GIF_DISPOSAL_BACKGROUND) {
+    else if (pgfi && pgfi->disposal == GD_Background) {
       expand_bounds(&lf, &tp, &rt, &bt, pgfi);
       fill_area(last, pgfi->left, pgfi->top, pgfi->width, pgfi->height, background);
     } else
@@ -173,7 +173,7 @@ apply_image(int is_second, Gif_Stream *gfs, int imageno, uint16_t background)
   Gif_ReleaseCompressedImage(gfi);
 
   /* switch 'glast' with 'scratch' if necessary */
-  if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+  if (gfi->disposal == GD_Previous) {
     uint16_t *x = scratch;
     scratch = glast[is_second];
     glast[is_second] = x;
@@ -342,8 +342,8 @@ compare(Gif_Stream *s1, Gif_Stream *s2)
 
     /* compare background */
     if (!ignore_background && background1 != background2
-        && (imageno1 == 0 || s1->images[imageno1 - 1]->disposal == GIF_DISPOSAL_BACKGROUND)
-        && (imageno2 == 0 || s2->images[imageno2 - 1]->disposal == GIF_DISPOSAL_BACKGROUND)) {
+        && (imageno1 == 0 || s1->images[imageno1 - 1]->disposal == GD_Background)
+        && (imageno2 == 0 || s2->images[imageno2 - 1]->disposal == GD_Background)) {
         unsigned d, c = screen_width * screen_height;
         uint16_t *d1 = gdata[0], *d2 = gdata[1];
         for (d = 0; d < c; ++d, ++d1, ++d2)

@@ -390,7 +390,7 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
       Gif_Extension* gfex;
       for (gfex = srci->extension_list; gfex; gfex = gfex->next)
           if (gfex->kind != 255 || !srcfr->no_app_extensions)
-              Gif_AddExtension(dest, desti, Gif_CopyExtension(gfex));
+              Gif_AddExtension(dest, desti, Gif_NewExtensionFrom(gfex));
   }
   while (srcfr->extensions) {
       Gif_Extension* next = srcfr->extensions->next;

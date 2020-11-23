@@ -1464,11 +1464,11 @@ main(int argc, char *argv[])
      (const char*) 0);
   Clp_AddStringListType
     (clp, DISPOSAL_TYPE, Clp_AllowNumbers,
-     "none", GIF_DISPOSAL_NONE,
-     "asis", GIF_DISPOSAL_ASIS,
-     "background", GIF_DISPOSAL_BACKGROUND,
-     "bg", GIF_DISPOSAL_BACKGROUND,
-     "previous", GIF_DISPOSAL_PREVIOUS,
+     "none", GD_None,
+     "asis", GD_Asis,
+     "background", GD_Background,
+     "bg", GD_Background,
+     "previous", GD_Previous,
      (const char*) 0);
   Clp_AddStringListType
     (clp, COLORMAP_ALG_TYPE, 0,
@@ -1825,7 +1825,7 @@ main(int argc, char *argv[])
      case DISPOSAL_OPT:
       MARK_CH(frame, CH_DISPOSAL);
       if (clp->negated)
-        def_frame.disposal = GIF_DISPOSAL_NONE;
+        def_frame.disposal = GD_None;
       else if (clp->val.i < 0 || clp->val.i > 7)
         error(0, "disposal must be between 0 and 7");
       else

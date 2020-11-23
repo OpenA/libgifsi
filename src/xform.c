@@ -415,7 +415,7 @@ static void kcscreen_apply(kcscreen* kcs, const Gif_Image* gfi,
     assert((unsigned) gfi->left + gfi->width <= kcs->width);
     assert((unsigned) gfi->top + gfi->height <= kcs->height);
 
-    if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    if (gfi->disposal == GD_Previous) {
         if (!kcs->scratch)
             kcs->scratch = Gif_NewArray(kacolor, kcs->width * kcs->height);
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
@@ -441,12 +441,12 @@ static void kcscreen_dispose(kcscreen* kcs, const Gif_Image* gfi) {
     assert((unsigned) gfi->left + gfi->width <= kcs->width);
     assert((unsigned) gfi->top + gfi->height <= kcs->height);
 
-    if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    if (gfi->disposal == GD_Previous) {
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
             memcpy(&kcs->data[y * kcs->width + gfi->left],
                    &kcs->scratch[y * kcs->width + gfi->left],
                    sizeof(kacolor) * gfi->width);
-    } else if (gfi->disposal == GIF_DISPOSAL_BACKGROUND) {
+    } else if (gfi->disposal == GD_Background) {
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
             for (x = gfi->left; x != gfi->left + gfi->width; ++x)
                 kcs->data[y * kcs->width + x] = kcs->bg;
@@ -501,7 +501,7 @@ static void ksscreen_apply(ksscreen* kss, const Gif_Image* gfi,
     assert((unsigned) gfi->left + gfi->width <= kss->width);
     assert((unsigned) gfi->top + gfi->height <= kss->height);
 
-    if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    if (gfi->disposal == GD_Previous) {
         if (!kss->scratch)
             kss->scratch = Gif_NewArray(scale_color, kss->width * kss->height);
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
@@ -525,12 +525,12 @@ static void ksscreen_dispose(ksscreen* kss, const Gif_Image* gfi) {
     assert((unsigned) gfi->left + gfi->width <= kss->width);
     assert((unsigned) gfi->top + gfi->height <= kss->height);
 
-    if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    if (gfi->disposal == GD_Previous) {
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
             memcpy(&kss->data[y * kss->width + gfi->left],
                    &kss->scratch[y * kss->width + gfi->left],
                    sizeof(scale_color) * gfi->width);
-    } else if (gfi->disposal == GIF_DISPOSAL_BACKGROUND) {
+    } else if (gfi->disposal == GD_Background) {
         for (y = gfi->top; y != gfi->top + gfi->height; ++y)
             for (x = gfi->left; x != gfi->left + gfi->width; ++x)
                 kss->data[y * kss->width + x] = kss->bg;
@@ -794,9 +794,9 @@ static void scale_image_complete(scale_context* sctx, Gif_Image* gfo) {
     if (sctx->imageno != sctx->gfs->nimages - 1) {
         ksscreen_dispose(&sctx->iscr, sctx->gfi);
 
-        if (sctx->gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+        if (sctx->gfi->disposal == GD_Background)
             kcscreen_dispose(&sctx->oscr, gfo);
-        else if (sctx->gfi->disposal != GIF_DISPOSAL_PREVIOUS)
+        else if (sctx->gfi->disposal != GD_Previous)
             kcscreen_apply(&sctx->oscr, gfo, sctx->kd3->ks);
     }
 
@@ -1178,7 +1178,7 @@ static void scale_image(scale_context* sctx, int method) {
         gfo.width = gfo.height = 1;
         Gif_CreateUncompressedImage(&gfo, 0);
         gfo.image_data[0] = gfo.transparent = 0;
-        gfo.disposal = GIF_DISPOSAL_ASIS;
+        gfo.disposal = GD_Asis;
         goto done;
     }
 
@@ -1336,7 +1336,7 @@ resize_stream(Gif_Stream* gfs,
             || gfs->images[i]->width != gfs->screen_width
             || gfs->images[i]->height != gfs->screen_height
             || (i != gfs->nimages - 1
-                && gfs->images[i]->disposal != GIF_DISPOSAL_BACKGROUND
+                && gfs->images[i]->disposal != GD_Background
                 && gfs->images[i+1]->transparent >= 0)) {
             warning(1, "image too complex for multithreaded resize, using 1 thread\n  (Try running the GIF through %<gifsicle -U%>.)");
             nthreads = 1;

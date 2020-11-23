@@ -123,7 +123,7 @@ unoptimize_image(Gif_Stream *gfs, Gif_Image *gfi, uint16_t *screen)
   Gif_UncompressImage(gfs, gfi);
   Gif_ReleaseCompressedImage(gfi);
 
-  if (gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+  if (gfi->disposal == GD_Previous) {
     new_screen = Gif_NewArray(uint16_t, size);
     if (!new_screen) return 0;
     memcpy(new_screen, screen, size * sizeof(uint16_t));
@@ -135,9 +135,9 @@ unoptimize_image(Gif_Stream *gfs, Gif_Image *gfi, uint16_t *screen)
     return 0;
   }
 
-  if (gfi->disposal == GIF_DISPOSAL_PREVIOUS)
+  if (gfi->disposal == GD_Previous)
     Gif_DeleteArray(new_screen);
-  else if (gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+  else if (gfi->disposal == GD_Background)
     put_background_in_screen(gfs, gfi, screen);
 
   gfi->left = 0;
@@ -212,12 +212,12 @@ Gif_FullUnoptimize(Gif_Stream *gfs, int flags)
       for (i = 0; i < gfs->nimages; ++i)
         if (i == gfs->nimages - 1
             || no_more_transparency(gfs->images[i+1], gfs->images[i]))
-          gfs->images[i]->disposal = GIF_DISPOSAL_NONE;
+          gfs->images[i]->disposal = GD_None;
         else
-          gfs->images[i]->disposal = GIF_DISPOSAL_BACKGROUND;
+          gfs->images[i]->disposal = GD_Background;
     } else
       for (i = 0; i < gfs->nimages; ++i)
-        gfs->images[i]->disposal = GIF_DISPOSAL_BACKGROUND;
+        gfs->images[i]->disposal = GD_Background;
   }
 
   Gif_DeleteArray(screen);

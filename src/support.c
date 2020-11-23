@@ -1160,7 +1160,7 @@ set_background(Gif_Stream *gfs, Gt_OutputData *output_data)
         if (merger[i]->total_crop) /* frame does not correspond to an image */
             continue;
         gfi = gfs->images[j];
-        if (gfi->disposal == GIF_DISPOSAL_BACKGROUND
+        if (gfi->disposal == GD_Background
             || (j == 0 && (gfi->left != 0 || gfi->top != 0
                            || gfi->width != gfs->screen_width
                            || gfi->height != gfs->screen_height))) {
@@ -1460,7 +1460,7 @@ static void mark_used_background_color(Gt_Frame* fr) {
          : gfi->transparent < 0)
         && ((fr->disposal >= 0
              ? fr->disposal
-             : gfi->disposal) == GIF_DISPOSAL_BACKGROUND
+             : gfi->disposal) == GD_Background
             || gfi->left != 0
             || gfi->top != 0
             || gfi->width != gfs->screen_width
@@ -1569,7 +1569,7 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
     fr->left_offset = fr->top_offset = 0;
     if (fr->crop) {
       int preserve_total_crop;
-      srci = Gif_CopyImage(fr->image);
+      srci = Gif_NewImageFrom(fr->image);
       Gif_UncompressImage(fr->stream, srci);
 
       /* Zero-delay frames are a special case.  You might think it was OK to

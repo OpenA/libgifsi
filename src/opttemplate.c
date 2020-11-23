@@ -182,11 +182,11 @@ X(apply_frame_disposal)(palindex_type *into_data, palindex_type *from_data,
                         palindex_type *previous_data, Gif_Image *gfi)
 {
   unsigned screen_size = (unsigned) screen_width * (unsigned) screen_height;
-  if (gfi->disposal == GIF_DISPOSAL_PREVIOUS)
+  if (gfi->disposal == GD_Previous)
     memcpy(into_data, previous_data, sizeof(palindex_type) * screen_size);
   else {
     memcpy(into_data, from_data, sizeof(palindex_type) * screen_size);
-    if (gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+    if (gfi->disposal == GD_Background)
       X(erase_data_area)(into_data, gfi);
   }
 }
@@ -207,8 +207,8 @@ X(find_difference_bounds)(Gif_OptData *bounds, Gif_Image *gfi, Gif_Image *last)
 
   /* 1.Aug.99 - use current bounds if possible, since this function is a speed
      bottleneck */
-  if (!last || last->disposal == GIF_DISPOSAL_NONE
-      || last->disposal == GIF_DISPOSAL_ASIS) {
+  if (!last || last->disposal == GD_None
+      || last->disposal == GD_Asis) {
     ob = safe_bounds(gfi);
     lf_min = ob.left;
     rt_max = ob.left + ob.width - 1;
@@ -482,9 +482,9 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
         local_color_tables = 1;
 
     /* save previous data if necessary */
-    if (gfi->disposal == GIF_DISPOSAL_PREVIOUS
+    if (gfi->disposal == GD_Previous
         || (local_color_tables && image_index > 0
-            && last_gfi->disposal > GIF_DISPOSAL_ASIS)) {
+            && last_gfi->disposal > GD_Asis)) {
       if (!previous_data)
         previous_data = Gif_NewArray(palindex_type, screen_size);
       memcpy(previous_data, X(this_data),
@@ -502,7 +502,7 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
 
  retry_frame:
     /* find minimum area of difference between this image and last image */
-    subimage->disposal = GIF_DISPOSAL_ASIS;
+    subimage->disposal = GD_Asis;
     if (image_index > 0)
         X(find_difference_bounds)(subimage, gfi, last_gfi);
     else {
@@ -514,8 +514,8 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
     }
 
     /* might need to expand difference border on background disposal */
-    if ((gfi->disposal == GIF_DISPOSAL_BACKGROUND
-         || gfi->disposal == GIF_DISPOSAL_PREVIOUS)
+    if ((gfi->disposal == GD_Background
+         || gfi->disposal == GD_Previous)
         && image_index < gfs->nimages - 1) {
       /* set up next_data */
       Gif_Image *next_gfi = gfs->images[image_index + 1];
@@ -524,7 +524,7 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
       next_data_valid = 1;
       /* expand border as necessary */
       if (X(expand_difference_bounds)(subimage, gfi))
-        subimage->disposal = GIF_DISPOSAL_BACKGROUND;
+        subimage->disposal = GD_Background;
     }
 
     fix_difference_bounds(subimage);
@@ -543,8 +543,8 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
       if (subimage->required_color_count > 256) {
           if (image_index > 0 && local_color_tables) {
               Gif_OptData *subimage = (Gif_OptData*) last_gfi->user_data;
-              if ((last_gfi->disposal == GIF_DISPOSAL_PREVIOUS
-                   || last_gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+              if ((last_gfi->disposal == GD_Previous
+                   || last_gfi->disposal == GD_Background)
                   && subimage->disposal != last_gfi->disposal) {
                   subimage->disposal = last_gfi->disposal;
                   memcpy(X(last_data), previous_data, sizeof(palindex_type) * screen_size);
@@ -565,14 +565,14 @@ X(create_subimages)(Gif_Stream *gfs, int optimize_flags, int save_uncompressed)
        want to compare the current image (only obtainable through unoptimized
        disposal) with what WILL be left after the previous OPTIMIZED image's
        disposal. This fix is repeated in create_new_image_data */
-    if (subimage->disposal == GIF_DISPOSAL_BACKGROUND)
+    if (subimage->disposal == GD_Background)
         X(erase_data_area_subimage)(X(last_data), subimage);
     else
         X(copy_data_area_subimage)(X(last_data), X(this_data), subimage);
 
-    if (last_gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+    if (last_gfi->disposal == GD_Background)
         X(erase_data_area)(X(this_data), last_gfi);
-    else if (last_gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    else if (last_gfi->disposal == GD_Previous) {
         palindex_type *temp = previous_data;
         previous_data = X(this_data);
         X(this_data) = temp;
@@ -878,7 +878,7 @@ X(create_new_image_data)(Gif_Stream *gfs, int optimize_flags)
     int was_compressed = (cur_gfi->img == 0);
 
     /* save previous data if necessary */
-    if (cur_gfi->disposal == GIF_DISPOSAL_PREVIOUS) {
+    if (cur_gfi->disposal == GD_Previous) {
         if (!previous_data)
             previous_data = Gif_NewArray(palindex_type, screen_size);
         X(copy_data_area)(previous_data, X(this_data), cur_gfi);
@@ -930,17 +930,17 @@ X(create_new_image_data)(Gif_Stream *gfs, int optimize_flags)
 
     /* Set up last_data and this_data. last_data must contain this_data + new
        disposal. this_data must contain this_data + old disposal. */
-    if (cur_gfi->disposal == GIF_DISPOSAL_NONE
-        || cur_gfi->disposal == GIF_DISPOSAL_ASIS)
+    if (cur_gfi->disposal == GD_None
+        || cur_gfi->disposal == GD_Asis)
         X(copy_data_area)(X(last_data), X(this_data), cur_gfi);
-    else if (cur_gfi->disposal == GIF_DISPOSAL_BACKGROUND)
+    else if (cur_gfi->disposal == GD_Background)
         X(erase_data_area)(X(last_data), cur_gfi);
-    else if (cur_gfi->disposal != GIF_DISPOSAL_PREVIOUS)
+    else if (cur_gfi->disposal != GD_Previous)
         assert(0 && "optimized frame has strange disposal");
 
-    if (cur_unopt_gfi.disposal == GIF_DISPOSAL_BACKGROUND)
+    if (cur_unopt_gfi.disposal == GD_Background)
         X(erase_data_area)(X(this_data), &cur_unopt_gfi);
-    else if (cur_unopt_gfi.disposal == GIF_DISPOSAL_PREVIOUS)
+    else if (cur_unopt_gfi.disposal == GD_Previous)
         X(copy_data_area)(X(this_data), previous_data, &cur_unopt_gfi);
   }
 

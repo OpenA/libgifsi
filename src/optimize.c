@@ -402,14 +402,14 @@ finalize_optimizer(Gif_Stream *gfs, int optimize_flags)
     Gif_Image *gfi = gfs->images[i];
     if (gfi->width == 1 && gfi->height == 1 && gfi->transparent >= 0
         && !gfi->identifier && !gfi->comment
-        && (gfi->disposal == GIF_DISPOSAL_ASIS
-            || gfi->disposal == GIF_DISPOSAL_NONE
-            || gfi->disposal == GIF_DISPOSAL_PREVIOUS)
+        && (gfi->disposal == GD_Asis
+            || gfi->disposal == GD_None
+            || gfi->disposal == GD_Previous)
         && gfi->delay && gfs->images[i-1]->delay) {
       Gif_UncompressImage(gfs, gfi);
       if (gfi->img[0][0] == gfi->transparent
-          && (gfs->images[i-1]->disposal == GIF_DISPOSAL_ASIS
-              || gfs->images[i-1]->disposal == GIF_DISPOSAL_NONE)) {
+          && (gfs->images[i-1]->disposal == GD_Asis
+              || gfs->images[i-1]->disposal == GD_None)) {
         gfs->images[i-1]->delay += gfi->delay;
         Gif_DeleteImage(gfi);
         memmove(&gfs->images[i], &gfs->images[i+1], sizeof(Gif_Image *) * (gfs->nimages - i - 1));
@@ -424,10 +424,10 @@ finalize_optimizer(Gif_Stream *gfs, int optimize_flags)
      rely on default behavior -- but will result in smaller GIF files, since
      the graphic control extension can be left off in many cases. */
   for (i = 0; i < gfs->nimages; i++)
-    if (gfs->images[i]->disposal == GIF_DISPOSAL_ASIS
+    if (gfs->images[i]->disposal == GD_Asis
         && gfs->images[i]->delay == 0
         && gfs->images[i]->transparent < 0)
-      gfs->images[i]->disposal = GIF_DISPOSAL_NONE;
+      gfs->images[i]->disposal = GD_None;
 
   Gif_DeleteColormap(in_global_map);
   Gif_DeleteColormap(all_colormap);

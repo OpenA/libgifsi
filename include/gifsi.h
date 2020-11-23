@@ -12,15 +12,18 @@
 #ifndef GIFSI_H
 #define GIFSI_H
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if HAVE_CONFIG_H
 #include <config.h>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
+/*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
+#ifdef __cplusplus && !defined(GIFSI_NO_COMPILE_CPP)
+# define GIFSI_COMPILE_CPP
 #endif
 
 #define GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL 1
@@ -30,11 +33,14 @@ extern "C" {
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
 
-#define GIF_DISPOSAL_NONE       0
-#define GIF_DISPOSAL_ASIS       1
-#define GIF_DISPOSAL_BACKGROUND 2
-#define GIF_DISPOSAL_PREVIOUS   3
+enum Gif_Disposal {
+	GD_None = 0,
+	GD_Asis,
+	GD_Background,
+	GD_Previous
+};
 
+typedef enum   Gif_Disposal   Gif_Disposal;
 typedef struct Gif_Stream     Gif_Stream;
 typedef struct Gif_Image      Gif_Image;
 typedef struct Gif_Colormap   Gif_Colormap;
@@ -50,24 +56,27 @@ struct Gif_Stream {
 	Gif_Image **images;
 	int nimages, imagescap;
 
-	Gif_Colormap *global;
+	Gif_Colormap  *global;
+	Gif_Comment   *end_comment;
+	Gif_Extension *end_extension_list;
+
 	unsigned short background;  /* 256 means no background */
-
 	unsigned short screen_width, screen_height;
-	long loopcount;       /* -1 means no loop count */
 
-	Gif_Comment* end_comment;
-	Gif_Extension* end_extension_list;
+	int loopcount, refcount;    /* -1 means no loop count */
 
 	unsigned int errors;
 	unsigned int user_flags;
 
 	const char* landmark;
-	int refcount;
+
+#ifdef GIFSI_COMPILE_CPP
+	~Gif_Stream();
+#endif //GIFSI_COMPILE_CPP
 };
 
 Gif_Stream * Gif_NewStream(void);
-Gif_Stream * Gif_CopyStreamSkeleton (Gif_Stream *);
+Gif_Stream * Gif_NewStreamFrom(const Gif_Stream *);
 Gif_Stream * Gif_CopyStreamImages   (Gif_Stream *);
 void         Gif_DeleteStream       (Gif_Stream *);
 
@@ -88,10 +97,11 @@ struct Gif_Image {
 	unsigned short width, height;
 	unsigned short left , top;
 	unsigned short delay;
-	unsigned char  disposal, interlace;
+	unsigned char  interlace;
 
 	short transparent;          /* -1 means no transparent index */
 	Gif_Colormap *local;
+	Gif_Disposal disposal;
 
 	char* identifier;
 	Gif_Comment* comment;
@@ -111,7 +121,7 @@ struct Gif_Image {
 };
 
 Gif_Image * Gif_NewImage(void);
-Gif_Image * Gif_CopyImage       (Gif_Image *gfi);
+Gif_Image * Gif_NewImageFrom    (const Gif_Image *gfi);
 void        Gif_DeleteImage     (Gif_Image *gfi);
 void        Gif_MakeImageEmpty  (Gif_Image* gfi);
 int         Gif_ImageColorBound (const Gif_Image* gfi);
@@ -168,10 +178,9 @@ struct Gif_Colormap {
 	Gif_Color *col;
 };
 
-Gif_Colormap * Gif_NewColormap     (void);
-Gif_Colormap * Gif_NewFullColormap (int count, int capacity);
+Gif_Colormap * Gif_NewColormap     (int, int);
 void           Gif_DeleteColormap  (Gif_Colormap *);
-Gif_Colormap * Gif_CopyColormap    (Gif_Colormap *);
+Gif_Colormap * Gif_NewColormapFrom (const Gif_Colormap *);
 int            Gif_ColorEq         (Gif_Color *, Gif_Color *);
 
 #define GIF_COLOREQ(c1, c2)(\
@@ -217,10 +226,10 @@ struct Gif_Extension {
 	void (*free_data)(void *);
 };
 
-Gif_Extension*  Gif_NewExtension    (int kind, const char* appname, int applength);
-void            Gif_DeleteExtension (Gif_Extension* gfex);
-Gif_Extension*  Gif_CopyExtension   (Gif_Extension* gfex);
-int             Gif_AddExtension    (Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex);
+Gif_Extension*  Gif_NewExtension    (int, const char *, int);
+void            Gif_DeleteExtension (Gif_Extension *);
+Gif_Extension*  Gif_NewExtensionFrom(const Gif_Extension *);
+int             Gif_AddExtension    (Gif_Stream *, Gif_Image *, Gif_Extension *);
 
 
 /** READING AND WRITING **/
@@ -270,25 +279,39 @@ int  Gif_AddDeletionHook    (int, Gif_DeletionHookFunc, void *);
 void Gif_RemoveDeletionHook (int, Gif_DeletionHookFunc, void *);
 
 #ifdef GIF_DEBUGGING
+# include <stdarg.h>
 # define GIF_DEBUG(x) Gif_Debug x
 void     Gif_Debug(char *x, ...);
 #else
 #define GIF_DEBUG(x)
 #endif
 
-void* Gif_Realloc (void* p, size_t s, size_t n, const char* file, int line);
+/* Legacy */
+#define Gif_CopyStreamSkeleton Gif_NewStreamFrom
+#define Gif_NewFullColormap    Gif_NewColormap
+#define Gif_CopyColormap       Gif_NewColormapFrom
+
 void  Gif_Free    (void* p);
 
-#ifndef  Gif_New
-# define Gif_New(t)         (    (t*) Gif_Realloc((void*) 0, sizeof(t), 1, __FILE__, __LINE__))
-# define Gif_NewArray(t,n)  (    (t*) Gif_Realloc((void*) 0, sizeof(t), n, __FILE__, __LINE__))
-# define Gif_ReArray(p,t,n) ((p)=(t*) Gif_Realloc((void*) p, sizeof(t), n, __FILE__, __LINE__))
-# define Gif_Delete(p)                Gif_Free   ((void*) p)
-# define Gif_DeleteArray(p)           Gif_Free   ((void*) p)
-#endif
+#define Gif_New(t)         (              (t*) malloc(            sizeof(t)))
+#define Gif_NewArray(t,n)  (    (n) > 0 ? (t*) malloc(            sizeof(t) * (n)) : NULL)
+#define Gif_ReArray(p,t,n) ((p)=(n) > 0 ? (t*)realloc((void*)(p), sizeof(t) * (n)) : NULL)
+#define Gif_Delete(p)                            free((void*)(p))
+#define Gif_DeleteArray(p)                       free((void*)(p))
 
-#ifdef __cplusplus
-}
-#endif
+#ifdef GIFSI_COMPILE_CPP
+# include <string>
+# include <vector>
+
+namespace GifSI {
+	class Stream : public Gif_Stream {
+	  public:
+	    Stream();
+	    Stream(const Stream& other);
+	    virtual ~Stream();
+	    Stream& operator=(const Stream& other);
+	};
+} /* namespace GifSI */
+#endif //GIFSI_COMPILE_CPP
 
 #endif //GIFSI_H

@@ -39,15 +39,16 @@ typedef struct {
 
 
 typedef struct Gif_Reader {
-  FILE *f;
-  const uint8_t *v;
-  uint32_t pos;
-  uint32_t length;
-  int is_record;
-  int is_eoi;
-  uint8_t (*byte_getter)(struct Gif_Reader *);
-  uint32_t (*block_getter)(uint8_t*, uint32_t, struct Gif_Reader*);
-  int (*eofer)(struct Gif_Reader *);
+	FILE *f;
+
+	const unsigned char *v;
+	unsigned pos, length;
+
+	bool is_record, is_eoi;
+
+	unsigned char (*byte_getter )(                           struct Gif_Reader *);
+	unsigned      (*block_getter)(unsigned char *, unsigned, struct Gif_Reader *);
+	bool          (*eofer       )(                           struct Gif_Reader *);
 } Gif_Reader;
 
 static Gif_ReadErrorHandler default_error_handler = 0;
@@ -58,155 +59,138 @@ static Gif_ReadErrorHandler default_error_handler = 0;
 #define gifgetblock(ptr, size, grr) ((*grr->block_getter)(ptr, size, grr))
 #define gifeof(grr)     ((*grr->eofer)(grr))
 
-static inline uint16_t
+static inline unsigned short
 gifgetunsigned(Gif_Reader *grr)
 {
-  uint8_t one = gifgetbyte(grr);
-  uint8_t two = gifgetbyte(grr);
-  return one | (two << 8);
+	unsigned char one = gifgetbyte(grr);
+	unsigned char two = gifgetbyte(grr);
+	return one | (two << 8);
 }
 
-
-static uint8_t
+static unsigned char
 file_byte_getter(Gif_Reader *grr)
 {
-    int i = getc(grr->f);
-    if (i != EOF) {
-        ++grr->pos;
-        return i;
-    } else
-        return 0;
+	int i = getc(grr->f);
+	if (i != EOF) {
+		++grr->pos;
+		return i;
+	}
+	return 0;
 }
 
-static uint32_t
-file_block_getter(uint8_t *p, uint32_t s, Gif_Reader *grr)
+static unsigned
+file_block_getter(unsigned char *p, unsigned s, Gif_Reader *grr)
 {
-    size_t nread = fread(p, 1, s, grr->f);
-    if (nread < s)
-        memset(p + nread, 0, s - nread);
-    grr->pos += nread;
-    return nread;
+	size_t nread = fread(p, 1, s, grr->f);
+	if (nread < s)
+		memset(p + nread, 0, s - nread);
+	grr->pos += nread;
+	return nread;
 }
 
-static int
+static bool
 file_eofer(Gif_Reader *grr)
 {
-  int c = getc(grr->f);
-  if (c == EOF)
-    return 1;
-  else {
-    ungetc(c, grr->f);
-    return 0;
-  }
+	int c = getc(grr->f);
+	if (c != EOF) {
+		ungetc(c, grr->f);
+		return false;
+	}
+	return true;
 }
 
+static unsigned char
+record_byte_getter(Gif_Reader *grr) {
+	return grr->pos < grr->length ? grr->v[grr->pos++] : 0;
+}
 
-static uint8_t
-record_byte_getter(Gif_Reader *grr)
+static unsigned
+record_block_getter(unsigned char *p, unsigned s, Gif_Reader *grr)
 {
-    if (grr->pos < grr->length)
-        return grr->v[grr->pos++];
-    else
-        return 0;
+	unsigned ncopy = (grr->pos + s <= grr->length ? s : grr->length - grr->pos);
+	memcpy(p, &grr->v[grr->pos], ncopy);
+	grr->pos += ncopy;
+	if (ncopy < s)
+		memset(p + ncopy, 0, s - ncopy);
+	return ncopy;
 }
 
-static uint32_t
-record_block_getter(uint8_t *p, uint32_t s, Gif_Reader *grr)
-{
-    uint32_t ncopy = (grr->pos + s <= grr->length ? s : grr->length - grr->pos);
-    memcpy(p, &grr->v[grr->pos], ncopy);
-    grr->pos += ncopy;
-    if (ncopy < s)
-        memset(p + ncopy, 0, s - ncopy);
-    return ncopy;
+static bool
+record_eofer(Gif_Reader *grr) {
+	return grr->pos == grr->length;
 }
-
-static int
-record_eofer(Gif_Reader *grr)
-{
-    return grr->pos == grr->length;
-}
-
 
 static void
-make_data_reader(Gif_Reader *grr, const uint8_t *data, uint32_t length)
+make_data_reader(Gif_Reader *grr, const unsigned char *data, unsigned length)
 {
-  grr->v = data;
-  grr->pos = 0;
-  grr->length = length;
-  grr->is_record = 1;
-  grr->byte_getter = record_byte_getter;
-  grr->block_getter = record_block_getter;
-  grr->eofer = record_eofer;
+	grr->v            = data;
+	grr->pos          = 0;
+	grr->length       = length;
+	grr->is_record    = true;
+	grr->byte_getter  = record_byte_getter;
+	grr->block_getter = record_block_getter;
+	grr->eofer        = record_eofer;
 }
-
 
 static void
 gif_read_error(Gif_Context *gfc, int is_error, const char *text)
 {
-    Gif_ReadErrorHandler handler = gfc->handler ? gfc->handler : default_error_handler;
-    if (is_error >= 0)
-        gfc->errors[is_error > 0] += 1;
-    if (handler)
-        handler(gfc->stream, gfc->gfi, is_error, text);
+	Gif_ReadErrorHandler handler = gfc->handler ? gfc->handler : default_error_handler;
+	if (is_error >= 0)
+		gfc->errors[is_error > 0] += 1;
+	if (handler)
+		handler(gfc->stream, gfc->gfi, is_error, text);
 }
 
-
-static uint8_t
+static unsigned char
 one_code(Gif_Context *gfc, Gif_Code code)
 {
-  uint8_t *suffixes = gfc->suffix;
-  Gif_Code *prefixes = gfc->prefix;
-  uint8_t *ptr;
-  int lastsuffix = 0;
-  int codelength = gfc->length[code];
+	int lastsuffix = 0;
+	int codelength = gfc->length[code];
 
-  gfc->decodepos += codelength;
-  ptr = gfc->image + gfc->decodepos;
-  while (codelength > 0) {
-      lastsuffix = suffixes[code];
-      code = prefixes[code];
-      --ptr;
-      if (ptr < gfc->maximage)
-          *ptr = lastsuffix;
-      --codelength;
-  }
+	unsigned char *suffx = gfc->suffix;
+	unsigned char *ptr   = gfc->image + (gfc->decodepos += codelength);
+	Gif_Code      *prefx = gfc->prefix;
 
-  /* return the first pixel in the code, which, since we walked backwards
-     through the code, was the last suffix we processed. */
-  return lastsuffix;
+	while ((codelength--) > 0) {
+		lastsuffix = suffx[code];
+		code       = prefx[code];
+		if (--ptr < gfc->maximage)
+			 *ptr = lastsuffix;
+	}
+	/* return the first pixel in the code, which, since we walked backwards
+	   through the code, was the last suffix we processed. */
+	return lastsuffix;
 }
 
-static int
-read_image_block(Gif_Reader *grr, uint8_t *buffer, int *bit_pos_store,
+static bool
+read_image_block(Gif_Reader *grr, unsigned char *buffer, int *bit_pos_store,
                  int *bit_len_store, int bits_needed)
 {
-  int bit_position = *bit_pos_store;
-  int bit_length = *bit_len_store;
-  uint8_t block_len;
+	int bit_position = *bit_pos_store;
+	int bit_length   = *bit_len_store;
+	unsigned char block_len;
 
-  while (bit_position + bits_needed > bit_length) {
-    /* Read in the next data block. */
-    if (bit_position >= 8) {
-      /* Need to shift down the upper, unused part of 'buffer' */
-      int i = bit_position / 8;
-      buffer[0] = buffer[i];
-      buffer[1] = buffer[i+1];
-      bit_position -= i * 8;
-      bit_length -= i * 8;
-    }
-    block_len = gifgetbyte(grr);
-    GIF_DEBUG(("\nimage_block(%d) ", block_len));
-    if (block_len == 0) return 0;
-    gifgetblock(buffer + bit_length / 8, block_len, grr);
-    bit_length += block_len * 8;
-  }
-
-  *bit_pos_store = bit_position;
-  *bit_len_store = bit_length;
-  return 1;
+	while (bit_position + bits_needed > bit_length) {
+		/* Read in the next data block. */
+		if (bit_position >= 8) {
+			/* Need to shift down the upper, unused part of 'buffer' */
+			int i = bit_position / 8;
+			buffer[0] = buffer[i];
+			buffer[1] = buffer[i + 1];
+			bit_position -= i * 8;
+			bit_length   -= i * 8;
+		}
+		block_len = gifgetbyte(grr);
+		GIF_DEBUG(("\nimage_block(%d) ", block_len));
+		if (!block_len) return false;
+		gifgetblock(buffer + bit_length / 8, block_len, grr);
+		bit_length += block_len * 8;
+	}
+	*bit_pos_store = bit_position;
+	*bit_len_store = bit_length;
+	return true;
 }
-
 
 static void
 read_image_data(Gif_Context *gfc, Gif_Reader *grr)
@@ -914,43 +898,29 @@ Gif_Stream *
 Gif_FullReadFile(FILE *f, int read_flags,
                  const char* landmark, Gif_ReadErrorHandler h)
 {
-  Gif_Reader grr;
-  if (!f) return 0;
-  grr.f = f;
-  grr.pos = 0;
-  grr.is_record = 0;
-  grr.byte_getter = file_byte_getter;
-  grr.block_getter = file_block_getter;
-  grr.eofer = file_eofer;
-  return read_gif(&grr, read_flags, landmark, h);
+	Gif_Reader grr;
+	if (!f)
+		return NULL;
+	grr.f            = f;
+	grr.pos          = 0;
+	grr.is_record    = false;
+	grr.byte_getter  = file_byte_getter;
+	grr.block_getter = file_block_getter;
+	grr.eofer        = file_eofer;
+	return read_gif(&grr, read_flags, landmark, h);
 }
 
 Gif_Stream *
 Gif_FullReadRecord(const Gif_Record *gifrec, int read_flags,
                    const char* landmark, Gif_ReadErrorHandler h)
 {
-  Gif_Reader grr;
-  if (!gifrec) return 0;
-  make_data_reader(&grr, gifrec->data, gifrec->length);
-  if (read_flags & GIF_READ_CONST_RECORD)
-    read_flags |= GIF_READ_COMPRESSED;
-  return read_gif(&grr, read_flags, landmark, h);
-}
-
-
-#undef Gif_ReadFile
-#undef Gif_ReadRecord
-
-Gif_Stream *
-Gif_ReadFile(FILE *f)
-{
-  return Gif_FullReadFile(f, GIF_READ_UNCOMPRESSED, 0, 0);
-}
-
-Gif_Stream *
-Gif_ReadRecord(const Gif_Record *gifrec)
-{
-  return Gif_FullReadRecord(gifrec, GIF_READ_UNCOMPRESSED, 0, 0);
+	Gif_Reader grr;
+	if (!gifrec)
+		return NULL;
+	make_data_reader(&grr, gifrec->data, gifrec->length);
+	if (read_flags &  GIF_READ_CONST_RECORD)
+		read_flags |= GIF_READ_COMPRESSED;
+	return read_gif(&grr, read_flags, landmark, h);
 }
 
 void

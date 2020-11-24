@@ -51,7 +51,7 @@ typedef struct Gif_Record     Gif_Record;
 typedef unsigned short Gif_Code;
 
 
-/** GIF_STREAM **/
+//  Stream class
 struct Gif_Stream {
 	Gif_Image **images;
 	int nimages, imagescap;
@@ -72,24 +72,37 @@ struct Gif_Stream {
 
 #ifdef GIFSI_COMPILE_CPP
 	~Gif_Stream();
-#endif //GIFSI_COMPILE_CPP
+#endif
 };
 
-Gif_Stream * Gif_NewStream(void);
-Gif_Stream * Gif_NewStreamFrom(const Gif_Stream *);
-Gif_Stream * Gif_CopyStreamImages   (Gif_Stream *);
-void         Gif_DeleteStream       (Gif_Stream *);
+//  Stream construct, copy, destroy fn declare
+Gif_Stream *Gif_NewStream       (void);
+Gif_Stream *Gif_NewStreamFrom   (const Gif_Stream *);
+bool        Gif_CopyStream      (const Gif_Stream *, Gif_Stream *);
+bool        Gif_CopyStreamImages(const Gif_Stream *, Gif_Stream *);
+void        Gif_InitStream            (Gif_Stream *);
+void        Gif_DeleteStream          (Gif_Stream *);
 
+//  Stream getters/setters declare
 #define Gif_ScreenHeight(gfs) (gfs->screen_height)
 #define Gif_ScreenWidth(gfs)  (gfs->screen_width)
 #define Gif_ImageCount(gfs)   (gfs->nimages)
 
-void Gif_CalculateScreenSize (Gif_Stream *, int force);
-int  Gif_Unoptimize          (Gif_Stream *);
-int  Gif_FullUnoptimize      (Gif_Stream *, int flags);
+//  Stream others methods declare
+Gif_Image * Gif_GetImage        (const Gif_Stream *, const unsigned);
+Gif_Image * Gif_GetNamedImage   (const Gif_Stream *, const char *);
+int         Gif_GetImageNum     (const Gif_Stream *, const Gif_Image *);
+bool        Gif_AddExtension          (Gif_Stream *, Gif_Image *, Gif_Extension *);
+bool        Gif_AddImage              (Gif_Stream *, Gif_Image *);
+void        Gif_RemoveImage           (Gif_Stream *, unsigned);
+void        Gif_CalculateScreenSize   (Gif_Stream *, bool);
+bool        Gif_FullUnoptimize        (Gif_Stream *, int);
+
+//  Stream renamed functions
+#define Gif_Unoptimize(gfs)    Gif_FullUnoptimize(gfs, 0)
 
 
-/** GIF_IMAGE **/
+//  Image class
 struct Gif_Image {
 	unsigned char **img;     /* img[y][x] == image byte (x,y) */
 	unsigned char *image_data;
@@ -99,7 +112,7 @@ struct Gif_Image {
 	unsigned short delay;
 	unsigned char  interlace;
 
-	short transparent;          /* -1 means no transparent index */
+	short transparent;       /* -1 means no transparent index */
 	Gif_Colormap *local;
 	Gif_Disposal disposal;
 
@@ -120,24 +133,29 @@ struct Gif_Image {
 	int refcount;
 };
 
+//  Image construct, copy, destroy fn declare
 Gif_Image * Gif_NewImage(void);
-Gif_Image * Gif_NewImageFrom    (const Gif_Image *gfi);
-void        Gif_DeleteImage     (Gif_Image *gfi);
-void        Gif_MakeImageEmpty  (Gif_Image* gfi);
-int         Gif_ImageColorBound (const Gif_Image* gfi);
+Gif_Image * Gif_NewImageFrom    (const Gif_Image *);
+bool        Gif_CopyImage       (const Gif_Image *, Gif_Image *);
+void        Gif_InitImage             (Gif_Image *);
+void        Gif_DeleteImage           (Gif_Image *);
 
-int         Gif_AddImage      (Gif_Stream *gfs, Gif_Image *gfi);
-void        Gif_RemoveImage   (Gif_Stream *gfs, int i);
-Gif_Image * Gif_GetImage      (Gif_Stream *gfs, int i);
-Gif_Image * Gif_GetNamedImage (Gif_Stream *gfs, const char *name);
-int         Gif_ImageNumber   (Gif_Stream *gfs, Gif_Image *gfi);
-
+//  Image getters/setters declare
 #define Gif_ImageDelay(gfi)         (gfi->delay)
 #define Gif_ImageWidth(gfi)         (gfi->width)
 #define Gif_ImageHeight(gfi)        (gfi->height)
 #define Gif_ImageUserData(gfi)      (gfi->userdata)
 #define Gif_SetImageUserData(gfi,v) (gfi->userdata = v)
-#define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,0)
+
+//  Image others methods declare
+int      Gif_ImageColorBound    (const Gif_Image *);
+bool     Gif_ClipImage                (Gif_Image *, int, int, int, int);
+bool     Gif_SetUncompressedImage     (Gif_Image *, unsigned char *, void (*free_data)(void *), bool);
+bool     Gif_CreateUncompressedImage  (Gif_Image *, bool);
+void     Gif_ReleaseUncompressedImage (Gif_Image *);
+void     Gif_ReleaseCompressedImage   (Gif_Image *);
+void     Gif_MakeImageEmpty           (Gif_Image *);
+
 
 typedef void (*Gif_ReadErrorHandler)(
 	Gif_Stream* gfs,
@@ -151,18 +169,15 @@ typedef struct {
 	void *padding[7];
 } Gif_CompressInfo;
 
-int  Gif_FullUncompressImage      (Gif_Stream* gfs, Gif_Image* gfi, Gif_ReadErrorHandler handler);
-int  Gif_FullCompressImage        (Gif_Stream *gfs, Gif_Image *gfi, const Gif_CompressInfo *gcinfo);
+#define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,0)
 
-void Gif_ReleaseUncompressedImage (Gif_Image *gfi);
-void Gif_ReleaseCompressedImage   (Gif_Image *gfi);
-int  Gif_SetUncompressedImage     (Gif_Image *gfi, unsigned char *data, void (*free_data)(void *), int data_interlaced);
-int  Gif_CreateUncompressedImage  (Gif_Image* gfi, int data_interlaced);
-int  Gif_ClipImage                (Gif_Image *gfi, int l, int t, int w, int h);
+int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, Gif_ReadErrorHandler);
+int  Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
+void Gif_InitCompressInfo                                     (Gif_CompressInfo *);
 
-void Gif_InitCompressInfo         (Gif_CompressInfo *gcinfo);
 
-/** GIF_COLORMAP **/
+
+//  Color object
 typedef struct {
 	unsigned char haspixel;  /* semantics assigned by user */
 	unsigned char gfc_red;   /* red component (0-255) */
@@ -171,6 +186,7 @@ typedef struct {
 	unsigned int  pixel;     /* semantics assigned by user */
 } Gif_Color;
 
+//  Colormap class
 struct Gif_Colormap {
 	int ncol, capacity;
 	unsigned int user_flags;
@@ -178,11 +194,14 @@ struct Gif_Colormap {
 	Gif_Color *col;
 };
 
-Gif_Colormap * Gif_NewColormap     (int, int);
-void           Gif_DeleteColormap  (Gif_Colormap *);
-Gif_Colormap * Gif_NewColormapFrom (const Gif_Colormap *);
-int            Gif_ColorEq         (Gif_Color *, Gif_Color *);
+//  Colormap construct, copy, destroy fn declare
+Gif_Colormap *Gif_NewColormap     (int, int);
+Gif_Colormap *Gif_NewColormapFrom (const Gif_Colormap *);
+bool          Gif_FillColormap          (Gif_Colormap *, int, int);
+void          Gif_InitColormap          (Gif_Colormap *);
+void          Gif_DeleteColormap        (Gif_Colormap *);
 
+//  Colormap getters/setters/eq declare
 #define GIF_COLOREQ(c1, c2)(\
 	(c1)->gfc_red   == (c2)->gfc_red   && \
 	(c1)->gfc_green == (c2)->gfc_green && \
@@ -193,25 +212,28 @@ int            Gif_ColorEq         (Gif_Color *, Gif_Color *);
 	(c)->gfc_green = (g),\
 	(c)->gfc_blue  = (b))
 
+//  Colormap others methods declare
 int Gif_FindColor (Gif_Colormap *, Gif_Color *);
 int Gif_AddColor  (Gif_Colormap *, Gif_Color *, int look_from);
 
-/** GIF_COMMENT **/
+
+// Comment class
 struct Gif_Comment {
-    char **str;
-    int *len;
-    int count;
-    int cap;
+	char **str;
+	int   *len;
+	int count, cap;
 };
 
+// Comment class
 Gif_Comment *
      Gif_NewComment     (void);
+void Gif_InitComment    (Gif_Comment *);
 void Gif_DeleteComment  (Gif_Comment *);
-int  Gif_AddCommentTake (Gif_Comment *, char *, int);
-int  Gif_AddComment     (Gif_Comment *, const char *, int);
+bool Gif_AddCommentTake (Gif_Comment *, char *, int);
+bool Gif_AddComment     (Gif_Comment *, const char *, int);
 
 
-/** GIF_EXTENSION **/
+//  Extension class
 struct Gif_Extension {
 	int kind; /* negative kinds are reserved */
 	char* appname;
@@ -226,10 +248,9 @@ struct Gif_Extension {
 	void (*free_data)(void *);
 };
 
-Gif_Extension*  Gif_NewExtension    (int, const char *, int);
+Gif_Extension * Gif_NewExtension    (int, const char *, int);
+Gif_Extension * Gif_NewExtensionFrom(const Gif_Extension *);
 void            Gif_DeleteExtension (Gif_Extension *);
-Gif_Extension*  Gif_NewExtensionFrom(const Gif_Extension *);
-int             Gif_AddExtension    (Gif_Stream *, Gif_Image *, Gif_Extension *);
 
 
 /** READING AND WRITING **/
@@ -266,8 +287,9 @@ int         Gif_IncrementalWriteComplete (Gif_Writer* grr, Gif_Stream* gfs);
 
 
 /** HOOKS AND MISCELLANEOUS **/
-int    Gif_InterlaceLine (int y, int height);
-char * Gif_CopyString    (const char *);
+unsigned Gif_InterlaceLine (unsigned, unsigned);
+char   * Gif_CopyString    (const char *);
+void     Gif_Free          (void *);
 
 #define GIF_T_STREAM   0
 #define GIF_T_IMAGE    1
@@ -275,7 +297,7 @@ char * Gif_CopyString    (const char *);
 
 typedef void (*Gif_DeletionHookFunc)(int, void *, void *);
 
-int  Gif_AddDeletionHook    (int, Gif_DeletionHookFunc, void *);
+bool Gif_AddDeletionHook    (int, Gif_DeletionHookFunc, void *);
 void Gif_RemoveDeletionHook (int, Gif_DeletionHookFunc, void *);
 
 #ifdef GIF_DEBUGGING
@@ -290,8 +312,7 @@ void     Gif_Debug(char *x, ...);
 #define Gif_CopyStreamSkeleton Gif_NewStreamFrom
 #define Gif_NewFullColormap    Gif_NewColormap
 #define Gif_CopyColormap       Gif_NewColormapFrom
-
-void  Gif_Free    (void* p);
+#define Gif_ImageNumber        Gif_GetImageNum
 
 #define Gif_New(t)         (              (t*) malloc(            sizeof(t)))
 #define Gif_NewArray(t,n)  (    (n) > 0 ? (t*) malloc(            sizeof(t) * (n)) : NULL)

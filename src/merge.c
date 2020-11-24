@@ -398,6 +398,6 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
       srcfr->extensions = next;
   }
 
-  Gif_AddImage(dest, desti);
+  (void)Gif_AddImage(dest, desti);
   return desti;
 }

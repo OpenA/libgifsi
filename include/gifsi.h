@@ -22,8 +22,14 @@
 #endif
 
 /*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
-#ifdef __cplusplus && !defined(GIFSI_NO_COMPILE_CPP)
+#ifdef __cplusplus
 # define GIFSI_COMPILE_CPP
+# include <string>
+# include <vector>
+#endif
+
+#if WITH_FILE_IO
+# define USE_FILE_IO
 #endif
 
 #define GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL 1
@@ -176,7 +182,6 @@ int  Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo 
 void Gif_InitCompressInfo                                     (Gif_CompressInfo *);
 
 
-
 //  Color object
 typedef struct {
 	unsigned char haspixel;  /* semantics assigned by user */
@@ -254,11 +259,6 @@ void            Gif_DeleteExtension (Gif_Extension *);
 
 
 /** READING AND WRITING **/
-struct Gif_Record {
-	const unsigned char *data;
-	unsigned int length;
-};
-
 #define GIF_READ_COMPRESSED             1
 #define GIF_READ_UNCOMPRESSED           2
 #define GIF_READ_CONST_RECORD           4
@@ -269,16 +269,17 @@ struct Gif_Record {
 #define GIF_WRITE_OPTIMIZE              4
 #define GIF_WRITE_SHRINK                8
 
-void        Gif_SetErrorHandler (Gif_ReadErrorHandler handler);
-Gif_Stream* Gif_FullReadFile    (FILE* f, int flags, const char* landmark, Gif_ReadErrorHandler handler);
-Gif_Stream* Gif_FullReadRecord  (const Gif_Record* record, int flags, const char* landmark,  Gif_ReadErrorHandler handler);
-int         Gif_FullWriteFile   (Gif_Stream *gfs, const Gif_CompressInfo *gcinfo, FILE *f);
+void        Gif_SetErrorHandler (Gif_ReadErrorHandler);
+Gif_Stream* Gif_FullReadData    (const unsigned char *, unsigned, int, const char *, Gif_ReadErrorHandler);
 
-#define Gif_ReadRecord(r) Gif_FullReadRecord (r,GIF_READ_UNCOMPRESSED,0,0)
-#define Gif_ReadFile(f)   Gif_FullReadFile   (f,GIF_READ_UNCOMPRESSED,0,0)
+Gif_Stream* Gif_FullReadFile    (FILE *, int, const char *, Gif_ReadErrorHandler);
+int         Gif_FullWriteFile   (Gif_Stream *, const Gif_CompressInfo *, FILE *);
 
-#define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,0)
-#define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,0,f)
+#define Gif_ReadData(d,l) Gif_FullReadData (d,l, GIF_READ_UNCOMPRESSED, NULL, NULL)
+#define Gif_ReadFile(f)   Gif_FullReadFile (f,   GIF_READ_UNCOMPRESSED, NULL, NULL)
+
+#define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
+#define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,NULL,f)
 
 typedef struct Gif_Writer Gif_Writer;
 Gif_Writer* Gif_IncrementalWriteFileInit (Gif_Stream* gfs, const Gif_CompressInfo* gcinfo, FILE *f);
@@ -321,8 +322,6 @@ void     Gif_Debug(char *x, ...);
 #define Gif_DeleteArray(p)                       free((void*)(p))
 
 #ifdef GIFSI_COMPILE_CPP
-# include <string>
-# include <vector>
 
 namespace GifSI {
 	class Stream : public Gif_Stream {

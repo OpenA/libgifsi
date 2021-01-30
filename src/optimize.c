@@ -416,16 +416,15 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 		return;
 	if (!gcinfo)
 		 gcinfo = Gif_NewCompressInfo();
+
+	int opt_lvl = optimize_flags & GT_OPT_MASK;
+	if (opt_lvl >= 3)
+		gcinfo->flags |= GIF_WRITE_OPTIMIZE;
+
 	if ((unsigned)all_colormap->ncol >= 0xFFFF) {
-		create_subimages32(gfs, optimize_flags, !huge_stream);
-		create_out_global_map32(gfs);
-		create_new_image_data32(gfs, gcinfo, optimize_flags);
-		finalize_optimizer_data32();
+		create_new_image_data32(gfs, gcinfo, opt_lvl, !huge_stream);
 	} else {
-		create_subimages16(gfs, optimize_flags, !huge_stream);
-		create_out_global_map16(gfs);
-		create_new_image_data16(gfs, gcinfo, optimize_flags);
-		finalize_optimizer_data16();
+		create_new_image_data16(gfs, gcinfo, opt_lvl, !huge_stream);
 	}
 	finalize_optimizer(gfs, optimize_flags);
 }

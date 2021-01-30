@@ -360,6 +360,22 @@ Gif_NewExtensionFrom(const Gif_Extension* src)
 	return dest;
 }
 
+/*
+  CompressInfo constructor functions & methods
+*/
+Gif_CompressInfo *
+Gif_NewCompressInfo(void) {
+	Gif_CompressInfo *gcinfo = Gif_New(Gif_CompressInfo);
+	if (gcinfo != NULL)
+		Gif_InitCompressInfo(gcinfo);
+	return gcinfo;
+}
+
+void Gif_InitCompressInfo(Gif_CompressInfo *gcinfo)
+{
+	gcinfo->flags = gcinfo->loss = 0;
+}
+
 
 /* MISC FUNCTIONS */
 char *Gif_CopyString(const char *str)
@@ -727,13 +743,6 @@ void Gif_DeleteExtension(Gif_Extension *gfex)
 		      *pprev = gfex->next;
 	}
 	Gif_Delete(gfex);
-}
-
-void
-Gif_InitCompressInfo(Gif_CompressInfo *gcinfo)
-{
-    gcinfo->flags = 0;
-    gcinfo->loss = 0;
 }
 
 #ifdef GIF_DEBUGGING

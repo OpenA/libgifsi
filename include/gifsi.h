@@ -38,6 +38,7 @@
 #define GIF_MAX_BLOCK         0xFF
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
+#define GIF_MAX_VALUE_UINT    0xFFFFFFFF
 
 enum Gif_Disposal {
 	GD_None = 0,
@@ -175,7 +176,9 @@ typedef struct {
 	void *padding[7];
 } Gif_CompressInfo;
 
-#define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,0)
+Gif_CompressInfo * Gif_NewCompressInfo(void);
+
+#define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,NULL)
 
 int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, Gif_ReadErrorHandler);
 int  Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
@@ -256,6 +259,14 @@ struct Gif_Extension {
 Gif_Extension * Gif_NewExtension    (int, const char *, int);
 Gif_Extension * Gif_NewExtensionFrom(const Gif_Extension *);
 void            Gif_DeleteExtension (Gif_Extension *);
+
+/* Optimizer */
+#define GIF_OPT_MASK      0xFFFF
+#define GIF_OPT_KEEPEMPTY 0x10000
+
+#define Gif_OptimizeFragments(gfs,gfi) Gif_FullOptimizeFragments(gfs,f,h,NULL)
+
+void Gif_FullOptimizeFragments(Gif_Stream *, int, int, Gif_CompressInfo *);
 
 
 /** READING AND WRITING **/

@@ -61,7 +61,7 @@ bool Gif_CopyStream(const Gif_Stream *src, Gif_Stream *dest)
 
 bool Gif_CopyStreamImages(const Gif_Stream *src, Gif_Stream *dest)
 {
-	for (int i = 0; i < src->nimages; i++) {
+	for (unsigned i = 0; i < src->nimages; i++) {
 		Gif_Image *gfi = Gif_NewImageFrom(src->images[i]);
 		if (!(gfi && Gif_AddImage(dest, gfi)))
 			return false;
@@ -420,7 +420,7 @@ Gif_GetNamedImage(const Gif_Stream *gfs, const char *name)
 {
 	if (!name)
 		return gfs->nimages ? gfs->images[0] : NULL;
-	for (int i = 0; i < gfs->nimages; i++) {
+	for (unsigned i = 0; i < gfs->nimages; i++) {
 		if (!gfs->images[i]->identifier)
 			continue;
 		if (!strcmp(gfs->images[i]->identifier, name))
@@ -433,7 +433,7 @@ int Gif_GetImageNum(const Gif_Stream *gfs, const Gif_Image *gfi)
 {
 	if (!gfs || !gfi)
 		return -1;
-	for (int i = 0; i < gfs->nimages; i++) {
+	for (unsigned i = 0; i < gfs->nimages; i++) {
 		if (gfs->images[i] == gfi)
 			return i;
 	}
@@ -473,7 +473,7 @@ void Gif_RemoveImage(Gif_Stream *gfs, unsigned inum)
 	if (inum >= gfs->nimages)
 		return;
 	Gif_DeleteImage(gfs->images[inum]);
-	for (int j = inum; j < gfs->nimages - 1; j++)
+	for (unsigned j = inum; j < gfs->nimages - 1; j++)
 		gfs->images[j] = gfs->images[j + 1];
 	gfs->nimages--;
 }
@@ -482,7 +482,7 @@ void Gif_CalculateScreenSize(Gif_Stream *gfs, bool force)
 {
 	unsigned screen_width = 0, screen_height = 0;
 
-	for (int i = 0; i < gfs->nimages; i++) {
+	for (unsigned i = 0; i < gfs->nimages; i++) {
 		Gif_Image *gfi = gfs->images[i];
 		/* 17.Dec.1999 - I find this old behavior annoying. */
 		/* if (gfi->left != 0 || gfi->top != 0) continue; */
@@ -574,8 +574,8 @@ bool Gif_SetUncompressedImage(Gif_Image *gfi, unsigned char *image_data,
 }
 
 bool Gif_CreateUncompressedImage(Gif_Image *gfi, bool data_interlaced) {
-	size_t sz = (size_t)gfi->width * (size_t)gfi->height;
-	unsigned char *data = Gif_NewArray(unsigned char, sz ? sz : 1);
+	size_t size = gfi->width && gfi->height ? (size_t)gfi->width * (size_t)gfi->height : 1;
+	unsigned char *data = Gif_NewArray(unsigned char, size);
 	return Gif_SetUncompressedImage(gfi, data, Gif_Free, data_interlaced);
 }
 
@@ -668,7 +668,7 @@ void Gif_DeleteStream(Gif_Stream *gfs)
 {
 	DELETE_HOOK(gfs, GIF_T_STREAM);
 
-	for (int i = 0; i < gfs->nimages; i++)
+	for (unsigned i = 0; i < gfs->nimages; i++)
 		Gif_DeleteImage(gfs->images[i]);
 
 	Gif_DeleteArray   (gfs->images);

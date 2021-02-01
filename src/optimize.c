@@ -16,7 +16,7 @@
 typedef signed int penalty_t;
 
 typedef struct {
-	unsigned int left, top, width, height;
+	unsigned short left, top, width, height;
 } Gif_OptBounds;
 
 typedef struct {
@@ -48,7 +48,6 @@ static Gif_Colormap *out_global_map;
 #define TRANSP (0)
 #define NOT_IN_OUT_GLOBAL (256)
 static unsigned background;
-static int image_index;
 
 static penalty_t *permuting_sort_values;
 
@@ -279,7 +278,7 @@ static unsigned char *prepare_colormap(Gif_Image *gfi, unsigned char *need)
 
 	/* try to map pixel values into the global colormap */
 	Gif_DeleteColormap(gfi->local);
-	gfi->local = 0;
+	gfi->local = NULL;
 	map = prepare_colormap_map(gfi, out_global_map, need);
 
 	if (!map) {
@@ -296,18 +295,18 @@ static unsigned char *prepare_colormap(Gif_Image *gfi, unsigned char *need)
  **/
 static bool initialize_optimizer(Gif_Stream *gfs)
 {
-	if (gfs->nimages < 1)
+	if (!gfs->nimages)
 		return false;
 
 	/* combine colormaps */
-	all_colormap = Gif_NewFullColormap(1, 384);
+	all_colormap = Gif_NewColormap(1, 384);
 	all_colormap->col[0].gfc_red   = 255;
 	all_colormap->col[0].gfc_green = 255;
 	all_colormap->col[0].gfc_blue  = 255;
 
 	in_global_map = gfs->global;
 	if (!in_global_map) {
-		in_global_map = Gif_NewFullColormap(256, 256);
+		in_global_map = Gif_NewColormap(256, 256);
 		Gif_Color *col = in_global_map->col;
 		for (int i = 0; i < 256; i++, col++)
 			col->gfc_red = col->gfc_green = col->gfc_blue = i;
@@ -353,13 +352,13 @@ static bool initialize_optimizer(Gif_Stream *gfs)
 	return true;
 }
 
-static void finalize_optimizer(Gif_Stream *gfs, int optimize_flags)
+static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 {
 	if (background == TRANSP)
-		gfs->background = (unsigned char)gfs->images[0]->transparent;
+		gfs->background = (unsigned short)gfs->images[0]->transparent;
 
 	/* 11.Mar.2010 - remove entirely transparent frames. */
-	for (int i = 1; i < gfs->nimages && !(optimize_flags & GIF_OPT_KEEPEMPTY); i++) {
+	for (unsigned i = 1; i < gfs->nimages && del_empty; i++) {
 		Gif_Image *curr = gfs->images[i];
 		Gif_Image *prev = gfs->images[i - 1];
 		if (curr->width  == 1 && !curr->identifier &&
@@ -385,7 +384,7 @@ static void finalize_optimizer(Gif_Stream *gfs, int optimize_flags)
 	  semantically "wrong" -- it's better to set the disposal explicitly than
 	  rely on default behavior -- but will result in smaller GIF files, since
 	  the graphic control extension can be left off in many cases. */
-	for (int i = 0; i < gfs->nimages; i++) {
+	for (unsigned i = 0; i < gfs->nimages; i++) {
 		Gif_Image *curr = gfs->images[i];
 		if (curr->disposal == GD_Asis && !curr->delay && curr->transparent < 0)
 			curr->disposal = GD_None;
@@ -426,5 +425,5 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 	} else {
 		create_new_image_data16(gfs, gcinfo, opt_lvl, !huge_stream);
 	}
-	finalize_optimizer(gfs, optimize_flags);
+	finalize_optimizer(gfs, !(optimize_flags & GIF_OPT_KEEPEMPTY));
 }

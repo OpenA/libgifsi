@@ -427,8 +427,7 @@ static void _Ex_(create_subimages)(
 ) {
 	Gif_Image *last_gfi = NULL;
 
-	int local_color_tables = 0;
-	bool next_data_valid = false;
+	bool is_next_data_valid = false;
 
 	UINT_t *next_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *temp_data = Gif_NewArray(UINT_t, screen_size);
@@ -439,34 +438,34 @@ static void _Ex_(create_subimages)(
 	   this_data -- input image after disposal of previous input frame
 	   next_data -- input image after application of current input frame,
 	                if next_image_valid */
-	for (image_index = 0; image_index < gfs->nimages; image_index++) {
+	for (unsigned i = 0; i < gfs->nimages; i++) {
 
-		Gif_Image *gfi = gfs->images[image_index];
+		Gif_Image *gfi = gfs->images[i];
 		Gif_OptData *subimage = new_opt_data();
 
-		if (gfi->local)
-			local_color_tables = 1;
+		bool is_local_ctab = !!gfi->local;
+		bool is_not_last = i < gfs->nimages - 1;
 
 		/* save previous data if necessary */
 		if (gfi->disposal == GD_Previous || (
-			local_color_tables && image_index > 0 && last_gfi->disposal > GD_Asis
+			is_local_ctab && i > 0 && last_gfi->disposal > GD_Asis
 		)) {
 			memcpy(temp_data, this_data, sizeof(UINT_t) * screen_size);
 		}
 
 		/* set this_data equal to the current image */
-		if (next_data_valid) {
+		if (is_next_data_valid) {
 			UINT_t *temp = this_data;
 			this_data = next_data;
 			next_data = temp;
-			next_data_valid = false;
+			is_next_data_valid = false;
 		} else
 			_Ex_(apply_frame)(gfs, gfi, this_data, false, save_uncompressed);
 
 retry_frame:
 		/* find minimum area of difference between this image and last image */
 		subimage->disposal = GD_Asis;
-		if (image_index > 0) {
+		if (i > 0) {
 			
 			_Ex_(find_difference_bounds)(subimage, gfi, last_data, this_data,
 				(!last_gfi || last_gfi->disposal == GD_None || last_gfi->disposal == GD_Asis));
@@ -481,15 +480,15 @@ retry_frame:
 		/* might need to expand difference border on background disposal */
 		if(( gfi->disposal == GD_Background
 		  || gfi->disposal == GD_Previous)
-		  && image_index < gfs->nimages - 1
+		  && is_not_last
 		) {
 			/* set up next_data */
-			Gif_Image *next_gfi = gfs->images[image_index + 1];
+			Gif_Image *next_gfi = gfs->images[i + 1];
 			memcpy(next_data, (gfi->disposal == GD_Previous ? temp_data : this_data), sizeof(UINT_t) * screen_size);
 			if (gfi->disposal == GD_Background)
 				_Ex_(erase_data_area_img)(next_data, gfi);
 			_Ex_(apply_frame)(gfs, next_gfi, next_data, false, save_uncompressed);
-			next_data_valid = true;
+			is_next_data_valid = true;
 			/* expand border as necessary */
 			if (_Ex_(expand_difference_bounds)(subimage, gfi, this_data, next_data))
 				subimage->disposal = GD_Background;
@@ -497,7 +496,7 @@ retry_frame:
 		fix_difference_bounds(subimage);
 
 		/* set map of used colors */
-		int use_transparency = image_index > 0 ? opt_lvl > 1 : background == TRANSP ? 2 : 0;
+		int use_transparency = i > 0 ? opt_lvl > 1 : background == TRANSP ? 2 : 0;
 
 		_Ex_(get_used_colors)(subimage, last_data, this_data, use_transparency);
 		/* Gifsicle's optimization strategy normally creates frames with ASIS
@@ -505,7 +504,7 @@ retry_frame:
 			cases when PREVIOUS disposal is strictly required, or a frame would
 			require more than 256 colors. Detect this case and try to recover. */
 		if (subimage->required_color_count > 256) {
-			if (image_index > 0 && local_color_tables) {
+			if (i > 0 && is_local_ctab) {
 				Gif_OptData *subimage = (Gif_OptData*) last_gfi->user_data;
 				if(( last_gfi->disposal == GD_Previous
 				  || last_gfi->disposal == GD_Background)
@@ -566,7 +565,9 @@ retry_frame:
 
 static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 {
-	int c, i, cur_ncol, all_ncol = all_colormap->ncol;
+	int c, cur_ncol, all_ncol = all_colormap->ncol;
+
+	unsigned i;
 
 	penalty_t *penalty  = Gif_NewArray(penalty_t, all_ncol);
 	UINT_t    *permute  = Gif_NewArray(UINT_t   , all_ncol);
@@ -808,7 +809,10 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 	Gif_Image cur_unopt_gfi;
 	/* placeholder; maintains pre-optimization
 	   image size so we can apply background disposal */
-	unsigned screen_size = screen_width * screen_height;
+	const unsigned short max_w = gfs->screen_width,
+	                     max_h = gfs->screen_height;
+	const unsigned screen_size = (unsigned)max_w * (unsigned)max_h;
+	      unsigned i;
 
 	UINT_t *temp_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *last_data = Gif_NewArray(UINT_t, screen_size);
@@ -827,12 +831,12 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 	_Ex_(erase_screen)(last_data, screen_size);
 	_Ex_(erase_screen)(this_data, screen_size);
 
-	for (image_index = 0; image_index < gfs->nimages; image_index++) {
+	for (i = 0; i < gfs->nimages; i++) {
 
-		Gif_Image *cur_gfi = gfs->images[image_index];
+		Gif_Image *cur_gfi = gfs->images[i];
 		Gif_OptData *opt = (Gif_OptData *)cur_gfi->user_data;
 
-		bool was_compressed = cur_gfi->img == NULL;
+		bool was_compressed = !cur_gfi->img;
 
 		/* save previous data if necessary */
 		if (cur_gfi->disposal == GD_Previous) {
@@ -855,7 +859,7 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 		cur_gfi->height   = opt->height;
 		cur_gfi->disposal = opt->disposal;
 
-		if (image_index > 0)
+		if (i > 0)
 			cur_gfi->interlace = 0;
 
 		/* find the new image's colormap and then make new data */
@@ -865,7 +869,7 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 		Gif_SetUncompressedImage(cur_gfi, data, Gif_Free, false);
 
 		/* don't use transparency on first frame */
-		if (opt_lvl > 1 && image_index > 0 && cur_gfi->transparent >= 0)
+		if (opt_lvl > 1 && i > 0 && cur_gfi->transparent >= 0)
 			_Ex_(transp_frame_data)(gfs, cur_gfi, gcinfo, map, last_data, this_data, opt_lvl);
 		else
 			_Ex_(simple_frame_data)(cur_gfi, map, this_data);

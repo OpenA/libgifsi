@@ -61,7 +61,7 @@ typedef unsigned short Gif_Code;
 //  Stream class
 struct Gif_Stream {
 	Gif_Image **images;
-	int nimages, imagescap;
+	unsigned int nimages, imagescap;
 
 	Gif_Colormap  *global;
 	Gif_Comment   *end_comment;

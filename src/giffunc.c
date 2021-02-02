@@ -511,12 +511,10 @@ int Gif_ImageColorBound(const Gif_Image* gfi) {
 	return (compss > 0 && compss < 8 ? 1 << compss : 256);
 }
 
-bool Gif_ClipImage(Gif_Image *gfi, int left, int top, int width, int height)
+void Gif_ClipImage(Gif_Image *gfi, int left, int top, int width, int height)
 {
 	int new_width = gfi->width, new_height = gfi->height;
 
-	if (!gfi->img)
-		return false;
 	if (gfi->left < left) {
 		int shift = left - gfi->left;
 		for (int y = 0; y < gfi->height; y++)
@@ -539,7 +537,6 @@ bool Gif_ClipImage(Gif_Image *gfi, int left, int top, int width, int height)
 
 	gfi->width  = new_width  < 0 ? 0 : new_width;
 	gfi->height = new_height < 0 ? 0 : new_height;
-	return true;
 }
 
 bool Gif_SetUncompressedImage(Gif_Image *gfi, unsigned char *image_data,

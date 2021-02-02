@@ -154,7 +154,7 @@ void        Gif_DeleteImage           (Gif_Image *);
 
 //  Image others methods declare
 int      Gif_ImageColorBound    (const Gif_Image *);
-bool     Gif_ClipImage                (Gif_Image *, int, int, int, int);
+void     Gif_ClipImage                (Gif_Image *, int, int, int, int);
 bool     Gif_SetUncompressedImage     (Gif_Image *, unsigned char *, void (*free_data)(void *), bool);
 bool     Gif_CreateUncompressedImage  (Gif_Image *, bool);
 void     Gif_ReleaseUncompressedImage (Gif_Image *);

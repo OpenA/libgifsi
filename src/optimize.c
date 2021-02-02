@@ -34,9 +34,6 @@ static Gif_Colormap *all_colormap;
 /* The old global colormap, or a fake one we created if necessary */
 static Gif_Colormap *in_global_map;
 
-/* The new global colormap */
-static Gif_Colormap *out_global_map;
-
 static unsigned background;
 
 static penalty_t *permuting_sort_values;
@@ -163,72 +160,66 @@ static int colormap_rgb_permutation_sorter(const void *v1, const void *v2)
 }
 
 
-/* prepare_colormap_map: Create and return an array of bytes mapping from
+/* prepare_colormap_for: Create and return an array of bytes mapping from
    global pixel values to pixel values for this image. It may add colormap
    cells to 'into'; if there isn't enough room in 'into', it will return 0. It
    sets the 'transparent' field of 'gfi->optdata', but otherwise doesn't
    change or read it at all. */
 
+/* If we get here, it failed! Return 0 and don't change global state. */
+
 static unsigned char *
-prepare_colormap_map(Gif_Image *gfi, Gif_Colormap *into, unsigned char *need)
+prepare_colormap_for(Gif_Image *gfi, Gif_Colormap *clm, unsigned char *need, const bool is_global)
 {
-	int i;
-	int is_global = (into == out_global_map);
-
-	int all_ncol = all_colormap->ncol;
-	Gif_Color *all_col = all_colormap->col;
-
-	int ncol = into->ncol;
-	Gif_Color *col = into->col;
+	Gif_Color *all_col = all_colormap->col , *col = clm->col;
+	int i, j, all_ncol = all_colormap->ncol, ncol = clm->ncol;
 
 	unsigned char *map = Gif_NewArray(unsigned char, all_ncol);
-	unsigned char into_used[256];
+	bool j_used[256];
 
 	/* keep track of which pixel indices in 'into' have been used; initially,
 	   all unused */
 	for (i = 0; i < 256; i++)
-		into_used[i] = 0;
+		j_used[i] = false;
 
 	/* go over all non-transparent global pixels which MUST appear
-	   (need[P] == TColorRequired) and place them in 'into' */
-	for (i = 1; i < all_ncol; i++) {
-		int val;
-		if (need[i] != TColorRequired)
-			continue;
+	   (need[P] == TColorRequired) and place them in 'cm_local' */
+	if (is_global) {
 
 		/* fail if a needed pixel isn't in the global map */
-		if (is_global) {
-			if (ncol <= (val = all_col[i].pixel))
+		for (i = 1; i < all_ncol; i++) {
+			if (need[i] != TColorRequired)
+				continue;
+			if (ncol <= (j = all_col[i].pixel))
 				goto error;
-		} else {
-			/* always place colors in a local colormap */
-			if (ncol == 256)
-				goto error;
-			val = ncol;
-			col[val] = all_col[i];
-			col[val].pixel = i;
-			ncol++;
+			j_used[j] = true;
+			   map[i] = j;
 		}
-		map[i] = val;
-		into_used[val] = 1;
-	}
-
-	if (!is_global) {
+	} else {
+		/* always place colors in a local colormap */
+		for (i = 1, j = ncol; i < all_ncol; i++) {
+			if ((j_used[j] = need[i] == TColorRequired)) {
+				if (ncol == 256)
+					goto error;
+				map[i] = j = ncol++;
+				col[j] = all_col[i];
+				col[j].pixel = i;
+			}
+		}
 		qsort(col, ncol, sizeof(Gif_Color), colormap_rgb_permutation_sorter);
-		for (i = 0; i < ncol; ++i)
+
+		for (i = 0; i < ncol; i++)
 			map[col[i].pixel] = i;
 	}
 
 	/* now check for transparency */
-	gfi->transparent = -1;
+	short transparent = -1;
 	if (need[TColorEmpty]) {
-		int transparent = -1;
-
 		/* first, look for an unused index in 'into'. Pick the lowest one: the
 		lower transparent index we get, the more likely we can shave a bit off
 		min_code_bits later, thus saving space */
 		for (i = 0; i < ncol; i++) {
-			if (!into_used[i]) {
+			if (!j_used[i]) {
 				transparent = i;
 				break;
 			}
@@ -251,87 +242,66 @@ prepare_colormap_map(Gif_Image *gfi, Gif_Colormap *into, unsigned char *need)
 			if (need[i] == TColorReplace)
 				map[i] = transparent;
 		}
-		gfi->transparent = transparent;
 	}
+	gfi->transparent = transparent;
 	/* If we get here, it worked! Commit state changes (the number of color
 		cells in 'into') and return the map. */
-	into->ncol = ncol;
+	clm->ncol = ncol;
 	return map;
 
 error:
 	/* If we get here, it failed! Return 0 and don't change global state. */
 	Gif_DeleteArray(map);
-	return 0;
-}
-
-
-/* prepare_colormap: make a colormap up from the image data by fitting any
-   used colors into a colormap. Returns a map from global color index to index
-   in this image's colormap. May set a local colormap on 'gfi'. */
-
-static unsigned char *prepare_colormap(Gif_Image *gfi, unsigned char *need)
-{
-	unsigned char *map;
-
-	/* try to map pixel values into the global colormap */
-	Gif_DeleteColormap(gfi->local);
-	gfi->local = NULL;
-	map = prepare_colormap_map(gfi, out_global_map, need);
-
-	if (!map) {
-		/* that didn't work; add a local colormap. */
-		gfi->local = Gif_NewColormap(0, 256);
-		map = prepare_colormap_map(gfi, gfi->local, need);
-	}
-	return map;
+	return NULL;
 }
 
 
 /*****
  * INITIALIZATION AND FINALIZATION
  **/
-static void init_colormaps(Gif_Stream *gfs)
+static Gif_Colormap *init_colormaps(Gif_Stream *gfs)
 {
+	unsigned i, t;
+	int first_transparent = -1;
+	bool any_globals = false;
+
 	/* combine colormaps */
-	all_colormap = Gif_NewColormap(1, 384);
-	all_colormap->col[0].gfc_red   = 255;
-	all_colormap->col[0].gfc_green = 255;
-	all_colormap->col[0].gfc_blue  = 255;
+	Gif_Colormap *gl_cmap = Gif_NewColormap(1, 384);
+	gl_cmap->col[0].gfc_red   = 255;
+	gl_cmap->col[0].gfc_green = 255;
+	gl_cmap->col[0].gfc_blue  = 255;
 
 	in_global_map = gfs->global;
 	if (!in_global_map) {
 		in_global_map = Gif_NewColormap(256, 256);
 		Gif_Color *col = in_global_map->col;
-		for (int i = 0; i < 256; i++, col++)
+		for (i = 0; i < 256; i++, col++)
 			col->gfc_red = col->gfc_green = col->gfc_blue = i;
 	}
 
-	unsigned i, t;
-	int first_transparent = -1;
-	bool any_globals = false;
 
 	/* Histogram so we can find colors quickly */
-	kchist all_colormap_hist;
-	kchist_init(&all_colormap_hist);
+	kchist cm_hist;
+	kchist_init(&cm_hist);
 
 	for (i = 0; i < gfs->nimages; i++) {
 		Gif_Image *gfi = gfs->images[i];
 		if (gfi->local)
-			colormap_add(gfi->local, all_colormap, &all_colormap_hist);
+			colormap_add(gfi->local, gl_cmap, &cm_hist);
 		else
 			any_globals = true;
 		if (gfi->transparent >= 0 && first_transparent < 0)
 			first_transparent = i;
 	}
 	if (any_globals)
-		colormap_add(in_global_map, all_colormap, &all_colormap_hist);
-	kchist_cleanup(&all_colormap_hist);
+		colormap_add(in_global_map, gl_cmap, &cm_hist);
+	kchist_cleanup(&cm_hist);
 
 	/* try and maintain transparency's pixel value */
 	if (first_transparent >= 0) {
 		Gif_Image *gfi = gfs->images[first_transparent];
 		Gif_Colormap *gfcm = gfi->local ? gfi->local : gfs->global;
-		all_colormap->col[TColorEmpty] = gfcm->col[gfi->transparent];
+		gl_cmap->col[TColorEmpty] = gfcm->col[gfi->transparent];
 	}
 
 	/* find screen_width and screen_height, and clip all images to screen */
@@ -350,6 +320,7 @@ static void init_colormaps(Gif_Stream *gfs)
 		background = in_global_map->col[gfs->background].pixel;
 	else
 		background = TColorEmpty;
+	return gl_cmap;
 }
 
 static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
@@ -389,8 +360,6 @@ static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 		if (curr->disposal == GD_Asis && !curr->delay && curr->transparent < 0)
 			curr->disposal = GD_None;
 	}
-	Gif_DeleteColormap(in_global_map);
-	Gif_DeleteColormap(all_colormap);
 }
 
 
@@ -414,7 +383,7 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 	if (!gfs->nimages)
 		return;
 
-	init_colormaps(gfs);
+	all_colormap = init_colormaps(gfs);
 
 	if (!gcinfo)
 		 gcinfo = Gif_NewCompressInfo();
@@ -429,4 +398,6 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 		create_new_image_data16(gfs, gcinfo, opt_lvl, !huge_stream);
 	}
 	finalize_optimizer(gfs, !(optimize_flags & GIF_OPT_KEEPEMPTY));
+	Gif_DeleteColormap(in_global_map);
+	Gif_DeleteColormap(all_colormap);
 }

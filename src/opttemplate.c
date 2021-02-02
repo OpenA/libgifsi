@@ -528,14 +528,14 @@ retry_frame:
  * CALCULATE OUTPUT GLOBAL COLORMAP
  **/
 
-/* create_out_global_map: The interface function to this pass. It creates
-   out_global_map and sets pixel values on all_colormap appropriately.
+/* make_opt_colormap: The interface function to this pass. It creates
+   global colormap and sets pixel values on all_colormap appropriately.
    Specifically:
 
    all_colormap->col[P].pixel >= 256 ==> P is not in the global colormap.
 
    Otherwise, all_colormap->col[P].pixel == the J so that
-   GIF_COLOREQ(&all_colormap->col[P], &out_global_map->col[J]).
+   GIF_COLOREQ(&all_colormap->col[P], &gfs->global->col[J]).
 
    On return, the 'colormap_penalty' component of an image's Gif_OptData
    structure is <0 iff that image will need a local colormap.
@@ -622,12 +622,12 @@ static void _Ex_(make_opt_colormap)(Gif_Stream *gfs, Gif_OptData **opt)
 		ordering[background] = 255;
 	}
 
-	/* assign out_global_map based on permutation */
-	gfs->global = out_global_map = Gif_NewColormap(nglobal_all, 256);
+	/* assign global colormap based on permutation */
+	gfs->global = Gif_NewColormap(nglobal_all, 256);
 
 	for (c = 1; c < all_ncol; c++) {
 		if (ordering[c] < 256) {
-			out_global_map->col[ordering[c]] = all_colormap->col[c];
+			gfs->global->col[ordering[c]] = all_colormap->col[c];
 			all_colormap->col[c].pixel = ordering[c];
 		} else
 			all_colormap->col[c].pixel = TColorLimit;
@@ -778,8 +778,18 @@ static void _Ex_(make_out_frames)(
 	if (not_first)
 		gfi->interlace = 0;
 
+	Gif_DeleteColormap(gfi->local);
+	gfi->local = NULL;
+
+	/* try to map pixel values into the global colormap */
+	unsigned char *map = prepare_colormap_for(gfi, gfs->global, opt->needed_colors, true);
+
+	if (!map) {
+		/* that didn't work; add a local colormap. */
+		map = prepare_colormap_for(gfi,
+			(gfi->local = Gif_NewColormap(0, 256)), opt->needed_colors, false);
+	}
 	/* find the new image's colormap and then make new data */
-	unsigned char *map  = prepare_colormap(gfi, opt->needed_colors);
 	unsigned char *data = Gif_NewArray(unsigned char, (size_t)width * (size_t)height);
 
 	/* First, try w/o transparency. Compare this to the result using

@@ -41,14 +41,16 @@ static Gif_Colormap *in_global_map;
 /* The new global colormap */
 static Gif_Colormap *out_global_map;
 
-#define TRANSP (0)
-#define NOT_IN_OUT_GLOBAL (256)
 static unsigned background;
 
 static penalty_t *permuting_sort_values;
 
-#define REQUIRED        2
-#define REPLACE_TRANSP  1
+typedef enum {
+	TColorEmpty = 0,
+	TColorReplace,
+	TColorRequired,
+	TColorLimit = 256
+} Gif_TranColor;
 
 
 /*****
@@ -152,7 +154,7 @@ static void increment_penalties(Gif_OptData *opt, penalty_t *penalty, int delta)
 {
 	unsigned char *need = opt->needed_colors;
 	for (int i = 1; i < all_colormap->ncol; i++) {
-		if (need[i] == REQUIRED)
+		if (need[i] == TColorRequired)
 			penalty[i] += delta;
 	}
 }
@@ -201,10 +203,10 @@ prepare_colormap_map(Gif_Image *gfi, Gif_Colormap *into, unsigned char *need)
 		into_used[i] = 0;
 
 	/* go over all non-transparent global pixels which MUST appear
-	   (need[P]==REQUIRED) and place them in 'into' */
+	   (need[P] == TColorRequired) and place them in 'into' */
 	for (i = 1; i < all_ncol; i++) {
 		int val;
-		if (need[i] != REQUIRED)
+		if (need[i] != TColorRequired)
 			continue;
 
 		/* fail if a needed pixel isn't in the global map */
@@ -232,7 +234,7 @@ prepare_colormap_map(Gif_Image *gfi, Gif_Colormap *into, unsigned char *need)
 
 	/* now check for transparency */
 	gfi->transparent = -1;
-	if (need[TRANSP]) {
+	if (need[TColorEmpty]) {
 		int transparent = -1;
 
 		/* first, look for an unused index in 'into'. Pick the lowest one: the
@@ -252,14 +254,14 @@ prepare_colormap_map(Gif_Image *gfi, Gif_Colormap *into, unsigned char *need)
 			if (ncol < 256) {
 				transparent = ncol;
 				/* 1.Aug.1999 - don't increase ncol */
-				col[ncol] = all_col[TRANSP];
+				col[ncol] = all_col[TColorEmpty];
 			} else
 				goto error;
 		}
 		/* change mapping */
-		map[TRANSP] = transparent;
+		map[TColorEmpty] = transparent;
 		for (i = 1; i < all_ncol; i++) {
-			if (need[i] == REPLACE_TRANSP)
+			if (need[i] == TColorReplace)
 				map[i] = transparent;
 		}
 		gfi->transparent = transparent;
@@ -342,7 +344,7 @@ static bool initialize_optimizer(Gif_Stream *gfs)
 	if (first_transparent >= 0) {
 		Gif_Image *gfi = gfs->images[first_transparent];
 		Gif_Colormap *gfcm = gfi->local ? gfi->local : gfs->global;
-		all_colormap->col[TRANSP] = gfcm->col[gfi->transparent];
+		all_colormap->col[TColorEmpty] = gfcm->col[gfi->transparent];
 	}
 
 	/* find screen_width and screen_height, and clip all images to screen */
@@ -360,13 +362,13 @@ static bool initialize_optimizer(Gif_Stream *gfs)
 		&& gfs->global && gfs->background < in_global_map->ncol)
 		background = in_global_map->col[gfs->background].pixel;
 	else
-		background = TRANSP;
+		background = TColorEmpty;
 	return true;
 }
 
 static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 {
-	if (background == TRANSP)
+	if (background == TColorEmpty)
 		gfs->background = (unsigned short)gfs->images[0]->transparent;
 
 	/* 11.Mar.2010 - remove entirely transparent frames. */

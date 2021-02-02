@@ -74,7 +74,7 @@ static void _Ex_(erase_data_area)(Gif_OptBounds ob, UINT_t *dst)
 	dst += ob.top * ob.MAX_W + ob.left;
 	for (y = 0; y < ob.height; y++) {
 		for (x = 0; x < ob.width; x++)
-			dst[x] = TRANSP;
+			dst[x] = TColorEmpty;
 		dst += ob.MAX_W;
 	}
 }
@@ -99,7 +99,7 @@ static void _Ex_(apply_frame)(
 		Gif_UncompressImage(gfs, gfi);
 	}
 
-	/* make sure transparency maps to TRANSP */
+	/* make sure transparency maps to TColorEmpty */
 	for (i = 0; i < colormap->ncol; i++)
 		map[i] = colormap->col[i].pixel;
 
@@ -110,7 +110,7 @@ static void _Ex_(apply_frame)(
 		map[i] = y;
 
 	if (gfi->transparent >= 0 && gfi->transparent < 256)
-		map[gfi->transparent] = TRANSP;
+		map[gfi->transparent] = TColorEmpty;
 	else
 		replace = true;
 
@@ -121,7 +121,7 @@ static void _Ex_(apply_frame)(
 
 		for (x = 0; x < ob.width; x++) {
 			UINT_t new_pixel = map[gfi_pointer[x]];
-			if (replace || new_pixel != TRANSP)
+			if (replace || new_pixel != TColorEmpty)
 				dst[x] = new_pixel;
 		}
 		dst += ob.MAX_W;
@@ -246,7 +246,7 @@ static bool _Ex_(expand_difference_bounds)(
 		UINT_t *targ = this_data + ob.MAX_W * t;
 		UINT_t *next = next_data + ob.MAX_W * t;
 		for (x = l; x < l + w; x++) {
-			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
+			if ((ok = targ[x] != TColorEmpty && next[x] == TColorEmpty))
 				break; //goto found_top;
 		}
 	}
@@ -256,7 +256,7 @@ static bool _Ex_(expand_difference_bounds)(
 		UINT_t *targ = this_data + ob.MAX_W * (t + h - 1);
 		UINT_t *next = next_data + ob.MAX_W * (t + h - 1);
 		for (x = l; x < l + w; x++) {
-			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
+			if ((ok = targ[x] != TColorEmpty && next[x] == TColorEmpty))
 				break; //goto found_bottom;
 		}
 	}
@@ -266,8 +266,8 @@ static bool _Ex_(expand_difference_bounds)(
 		UINT_t *targ = this_data + l;
 		UINT_t *next = next_data + l;
 		for (y = t; y < t + h; y++) {
-			if ((ok = targ[y * ob.MAX_W] != TRANSP
-			       && next[y * ob.MAX_W] == TRANSP))
+			if ((ok = targ[y * ob.MAX_W] != TColorEmpty
+			       && next[y * ob.MAX_W] == TColorEmpty))
 				break; //goto found_left;
 		}
 	}
@@ -277,8 +277,8 @@ static bool _Ex_(expand_difference_bounds)(
 		UINT_t *targ = this_data + l + w - 1;
 		UINT_t *next = next_data + l + w - 1;
 		for (y = t; y < t + h; y++) {
-			if ((ok = targ[y * ob.MAX_W] != TRANSP
-			       && next[y * ob.MAX_W] == TRANSP))
+			if ((ok = targ[y * ob.MAX_W] != TColorEmpty
+			       && next[y * ob.MAX_W] == TColorEmpty))
 				break; //goto found_right;
 		}
 	}
@@ -288,7 +288,7 @@ static bool _Ex_(expand_difference_bounds)(
 		UINT_t *targ = this_data + y * ob.MAX_W;
 		UINT_t *next = next_data + y * ob.MAX_W;
 		for (x = l; x < l + w; x++) {
-			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
+			if ((ok = targ[x] != TColorEmpty && next[x] == TColorEmpty))
 				break;
 		}
 	}
@@ -303,8 +303,8 @@ static bool _Ex_(expand_difference_bounds)(
  * DETERMINE WHICH COLORS ARE USED
  *
    get_used_colors: mark which colors are needed by a given image. Returns a
-   need array so that need[j] == REQUIRED if the output colormap must
-   include all_color j; REPLACE_TRANSP if it should be replaced by
+   need array so that need[j] == TColorRequired if the output colormap must
+   include all_color j; TColorReplace if it should be replaced by
    transparency; and 0 if it's not in the image at all.
 
    If use_transparency > 0, then a pixel which was the same in the last frame
@@ -316,7 +316,7 @@ static void _Ex_(get_used_colors)(
 	Gif_OptData *bounds,
 	UINT_t      *last_data,
 	UINT_t      *this_data,
-	int use_transparency,
+	Gif_TranColor tColor,
 	const unsigned short MAX_W,
 	const unsigned short MAX_H
 ) {
@@ -342,13 +342,13 @@ static void _Ex_(get_used_colors)(
 		UINT_t *data = this_data + MAX_W * y + left;
 		for (x = 0; x < width; x++) {
 			if (data[x] != last[x])
-				need[data[x]] = REQUIRED;
-			else if (need[data[x]] == TRANSP)
-				need[data[x]] = REPLACE_TRANSP;
+				need[data[x]] = TColorRequired;
+			else if (need[data[x]] == TColorEmpty)
+				need[data[x]] = TColorReplace;
 		}
 	}
-	if (need[TRANSP])
-		need[TRANSP] = REQUIRED;
+	if (need[TColorEmpty])
+		need[TColorEmpty] = TColorRequired;
 
 	/* check for too many colors; also force transparency if needed */
 	int count[3] = { 0, 0, 0 };
@@ -357,35 +357,35 @@ static void _Ex_(get_used_colors)(
 		count[need[i]]++;
 
 	/* If use_transparency is large and there's room, add transparency */
-	if (use_transparency > 1 && !need[TRANSP] && count[REQUIRED] < 256) {
-		need[TRANSP] = REQUIRED;
-		count[REQUIRED]++;
+	if (tColor == TColorRequired && !need[TColorEmpty] && count[TColorRequired] < TColorLimit) {
+		need[TColorEmpty] = TColorRequired;
+		count[TColorRequired]++;
 	}
 
 	/* If too many "potentially transparent" pixels, force transparency */
-	if (count[REPLACE_TRANSP] + count[REQUIRED] > 256)
-		use_transparency = 1;
+	if (count[TColorReplace] + count[TColorRequired] > TColorLimit)
+		tColor = TColorReplace;
 	/* Make sure transparency is marked necessary if we use it */
-	if (count[REPLACE_TRANSP] > 0 && use_transparency && !need[TRANSP]) {
-		need[TRANSP] = REQUIRED;
-		count[REQUIRED]++;
+	if (count[TColorReplace] > TColorEmpty && tColor && !need[TColorEmpty]) {
+		need[TColorEmpty] = TColorRequired;
+		count[TColorRequired]++;
 	}
 	/* If not using transparency, change "potentially transparent" pixels to
 		"actually used" pixels */
-	if (!use_transparency) {
+	if (tColor == TColorEmpty) {
 		for (i = 0; i < all_ncol; i++) {
-			if (need[i] == REPLACE_TRANSP)
-				need[i] = REQUIRED;
+			if (need[i] == TColorReplace)
+				need[i] = TColorRequired;
 		}
-		count[REQUIRED] += count[REPLACE_TRANSP];
+		count[TColorRequired] += count[TColorReplace];
 	}
 	/* If we can afford to have transparency, and we want to use it, then
 		include it */
-	if (count[REQUIRED] < 256 && use_transparency && !need[TRANSP]) {
-		need[TRANSP] = REQUIRED;
-		count[REQUIRED]++;
+	if (count[TColorRequired] < TColorLimit && tColor && !need[TColorEmpty]) {
+		need[TColorEmpty] = TColorRequired;
+		count[TColorRequired]++;
 	}
-	bounds->required_color_count = count[REQUIRED];
+	bounds->required_color_count = count[TColorRequired];
 	bounds->needed_colors = need;
 }
 
@@ -425,6 +425,9 @@ static void _Ex_(create_subimages)(
 		Gif_Image *gfi = gfs->images[i];
 		Gif_OptData *subimage = new_opt_data();
 
+		/* set map of used colors */
+		Gif_TranColor tColor = TColorEmpty;
+
 		const Gif_Disposal disp = gfi->disposal;
 		const Gif_OptBounds ob  = get_safe_bounds(gfi, max_w, max_h);
 
@@ -448,11 +451,15 @@ retry_frame:
 		if (i > 0) {
 			_Ex_(find_difference_bounds)(subimage, ob, last_data, this_data,
 				(last_disp == GD_None || last_disp == GD_Asis));
+			if (opt_lvl > 1)
+				tColor = TColorReplace;
 		} else {
 			subimage->left   = ob.left;
 			subimage->top    = ob.top;
 			subimage->width  = ob.width;
 			subimage->height = ob.height;
+			if (background == TColorEmpty)
+				tColor = TColorRequired;
 		}
 
 		/* might need to expand difference border on background disposal */
@@ -470,10 +477,7 @@ retry_frame:
 		}
 		fix_difference_bounds(subimage, max_w, max_h);
 
-		/* set map of used colors */
-		int use_transparency = i > 0 ? opt_lvl > 1 : background == TRANSP ? 2 : 0;
-
-		_Ex_(get_used_colors)(subimage, last_data, this_data, use_transparency, max_w, max_h);
+		_Ex_(get_used_colors)(subimage, last_data, this_data, tColor, max_w, max_h);
 		/* Gifsicle's optimization strategy normally creates frames with ASIS
 			or BACKGROUND disposal (not PREVIOUS disposal). However, there are
 			cases when PREVIOUS disposal is strictly required, or a frame would
@@ -591,7 +595,7 @@ static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 		for (i = 0; i < gfs->nimages; i++) {
 			Gif_OptData *opt = (Gif_OptData *)gfs->images[i]->user_data;
 			unsigned char *need = opt->needed_colors;
-			if (opt->global_penalty > 0 && need[removed] == REQUIRED) {
+			if (opt->global_penalty > 0 && need[removed] == TColorRequired) {
 				increment_penalties(opt, penalty, -opt->active_penalty);
 				opt->global_penalty   = 0;
 				opt->colormap_penalty = (cur_ncol > 256 ? -1 : 0);
@@ -613,7 +617,7 @@ static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 	}
 
 	/* make sure background is in the global colormap */
-	if (background != TRANSP && ordering[background] >= 256) {
+	if (background != TColorEmpty && ordering[background] >= TColorLimit) {
 		UINT_t other = permute[255];
 		ordering[other] = ordering[background];
 		ordering[background] = 255;
@@ -627,11 +631,11 @@ static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 			out_global_map->col[ordering[c]] = all_colormap->col[c];
 			all_colormap->col[c].pixel = ordering[c];
 		} else
-			all_colormap->col[c].pixel = NOT_IN_OUT_GLOBAL;
+			all_colormap->col[c].pixel = TColorLimit;
 	}
 
 	/* set the stream's background color */
-	if (background != TRANSP)
+	if (background != TColorEmpty)
 		gfs->background = ordering[background];
 
 	/* cleanup */
@@ -849,14 +853,14 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 
 	/* do first image. Remember to uncompress it if necessary */
 	for (i = 0; i < screen_size; i++)
-		prev_data[i] = last_data[i] = this_data[i] = TRANSP;
+		prev_data[i] = last_data[i] = this_data[i] = TColorEmpty;
 
 	_Ex_(create_subimages)(gfs, prev_data, last_data, this_data, opt_lvl, save_uncompress);
 	_Ex_(create_out_global_map)(gfs);
 
 	/* do first image. Remember to uncompress it if necessary */
 	for (i = 0; i < screen_size; i++)
-		prev_data[i] = last_data[i] = this_data[i] = TRANSP;
+		prev_data[i] = last_data[i] = this_data[i] = TColorEmpty;
 
 	for (i = 0; i < gfs->nimages; i++) {
 

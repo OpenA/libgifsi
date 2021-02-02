@@ -135,8 +135,6 @@ struct Gif_Image {
 	void (*free_compressed)(void *);
 
 	unsigned int user_flags;
-	void* user_data;
-	void (*free_user_data)(void *);
 	int refcount;
 };
 

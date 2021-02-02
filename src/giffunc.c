@@ -101,8 +101,6 @@ void Gif_InitImage(Gif_Image *gfi)
 	gfi->compressed_errors = 0;
 	gfi->compressed = NULL;
 	gfi->free_compressed = NULL;
-	gfi->user_data = NULL;
-	gfi->free_user_data = NULL;
 	gfi->refcount = 0;
 }
 
@@ -700,8 +698,6 @@ void Gif_DeleteImage(Gif_Image *gfi)
 
 	if (gfi->compressed && gfi->free_compressed)
 		(*gfi->free_compressed)((void *)gfi->compressed);
-	if (gfi->user_data && gfi->free_user_data)
-		(*gfi->free_user_data)(gfi->user_data);
 
 	Gif_Delete(gfi);
 }

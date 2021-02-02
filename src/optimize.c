@@ -28,14 +28,6 @@ typedef struct {
 	Gif_Disposal   disposal;
 } Gif_OptData;
 
-/* Colormap containing all colors in the image. May have >256 colors */
-static Gif_Colormap *all_colormap;
-
-/* The old global colormap, or a fake one we created if necessary */
-static Gif_Colormap *in_global_map;
-
-static unsigned background;
-
 static penalty_t *permuting_sort_values;
 
 typedef enum {
@@ -135,9 +127,9 @@ static void fix_difference_bounds(Gif_OptData *bounds, unsigned short MAX_W, uns
 /*****
  * CALCULATE OUTPUT GLOBAL COLORMAP
  **/
-static void increment_penalties(unsigned char *need, penalty_t *penalty, penalty_t delta)
+static void increment_penalties(unsigned char *need, const int count, penalty_t *penalty, penalty_t delta)
 {
-	for (int i = 1; i < all_colormap->ncol; i++) {
+	for (int i = 1; i < count; i++) {
 		if (need[i] == TColorRequired)
 			penalty[i] += delta;
 	}
@@ -168,11 +160,15 @@ static int colormap_rgb_permutation_sorter(const void *v1, const void *v2)
 
 /* If we get here, it failed! Return 0 and don't change global state. */
 
-static unsigned char *
-prepare_colormap_for(Gif_Image *gfi, Gif_Colormap *clm, unsigned char *need, const bool is_global)
-{
-	Gif_Color *all_col = all_colormap->col , *col = clm->col;
-	int i, j, all_ncol = all_colormap->ncol, ncol = clm->ncol;
+static unsigned char *prepare_colormap_for(
+	Gif_Image     *gfi,
+	Gif_Colormap  *gcm,
+	Gif_Colormap  *complex_cm,
+	unsigned char *need,
+	const bool  is_global
+) {
+	Gif_Color *all_col = complex_cm->col , *col = gcm->col;
+	int i, j, all_ncol = complex_cm->ncol, ncol = gcm->ncol;
 
 	unsigned char *map = Gif_NewArray(unsigned char, all_ncol);
 	bool j_used[256];
@@ -246,7 +242,7 @@ prepare_colormap_for(Gif_Image *gfi, Gif_Colormap *clm, unsigned char *need, con
 	gfi->transparent = transparent;
 	/* If we get here, it worked! Commit state changes (the number of color
 		cells in 'into') and return the map. */
-	clm->ncol = ncol;
+	gcm->ncol = ncol;
 	return map;
 
 error:
@@ -259,7 +255,7 @@ error:
 /*****
  * INITIALIZATION AND FINALIZATION
  **/
-static Gif_Colormap *init_colormaps(Gif_Stream *gfs)
+static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 {
 	unsigned i, t;
 	int first_transparent = -1;
@@ -271,14 +267,11 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs)
 	gl_cmap->col[0].gfc_green = 255;
 	gl_cmap->col[0].gfc_blue  = 255;
 
-	in_global_map = gfs->global;
-	if (!in_global_map) {
-		in_global_map = Gif_NewColormap(256, 256);
-		Gif_Color *col = in_global_map->col;
+	if (!gfs->global) {
+		Gif_Color *col = (gfs->global = Gif_NewColormap(256, 256))->col;
 		for (i = 0; i < 256; i++, col++)
 			col->gfc_red = col->gfc_green = col->gfc_blue = i;
 	}
-
 
 	/* Histogram so we can find colors quickly */
 	kchist cm_hist;
@@ -294,16 +287,15 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs)
 			first_transparent = i;
 	}
 	if (any_globals)
-		colormap_add(in_global_map, gl_cmap, &cm_hist);
+		colormap_add(gfs->global, gl_cmap, &cm_hist);
 	kchist_cleanup(&cm_hist);
 
 	/* try and maintain transparency's pixel value */
 	if (first_transparent >= 0) {
 		Gif_Image *gfi = gfs->images[first_transparent];
-		Gif_Colormap *gfcm = gfi->local ? gfi->local : gfs->global;
+		Gif_Colormap *gfcm = gfi->local ?: gfs->global;
 		gl_cmap->col[TColorEmpty] = gfcm->col[gfi->transparent];
 	}
-
 	/* find screen_width and screen_height, and clip all images to screen */
 	Gif_CalculateScreenSize(gfs, 0);
 
@@ -314,20 +306,16 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs)
 	for (i = 0; i < gfs->nimages; i++)
 		Gif_ClipImage(gfs->images[i], 0, 0, MAX_W, MAX_H);
 
-	/* choose background */
-	if (gfs->images[0]->transparent < 0
-		&& gfs->global && gfs->background < in_global_map->ncol)
-		background = in_global_map->col[gfs->background].pixel;
+	/* choose bg_color */
+	if (gfs->images[0]->transparent < 0 && gfs->background < gfs->global->ncol)
+		*bg_color = gfs->global->col[gfs->background].pixel;
 	else
-		background = TColorEmpty;
+		*bg_color = TColorEmpty;
 	return gl_cmap;
 }
 
 static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 {
-	if (background == TColorEmpty)
-		gfs->background = (unsigned short)gfs->images[0]->transparent;
-
 	/* 11.Mar.2010 - remove entirely transparent frames. */
 	for (unsigned i = 1; i < gfs->nimages && del_empty; i++) {
 		Gif_Image *curr = gfs->images[i];
@@ -380,24 +368,28 @@ static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 /* the interface function! */
 void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_stream, Gif_CompressInfo *gcinfo)
 {
+	unsigned bg_color;
+
 	if (!gfs->nimages)
 		return;
 
-	all_colormap = init_colormaps(gfs);
+	/* Colormap containing all colors in the image. May have >256 colors */
+	Gif_Colormap *complex_cm = init_colormaps(gfs, &bg_color);
 
 	if (!gcinfo)
 		 gcinfo = Gif_NewCompressInfo();
 
-	int opt_lvl = optimize_flags & GT_OPT_MASK;
+	int opt_lvl = optimize_flags & GIF_OPT_MASK;
 	if (opt_lvl >= 3)
 		gcinfo->flags |= GIF_WRITE_OPTIMIZE;
 
-	if ((unsigned)all_colormap->ncol >= 0xFFFF) {
-		create_new_image_data32(gfs, gcinfo, opt_lvl, !huge_stream);
+	if ((unsigned)complex_cm->ncol >= 0xFFFF) {
+		create_new_image_data32(gfs, complex_cm, bg_color, opt_lvl, !huge_stream, gcinfo);
 	} else {
-		create_new_image_data16(gfs, gcinfo, opt_lvl, !huge_stream);
+		create_new_image_data16(gfs, complex_cm, bg_color, opt_lvl, !huge_stream, gcinfo);
 	}
+	if (bg_color == TColorEmpty)
+		gfs->background = (unsigned short)gfs->images[0]->transparent;
 	finalize_optimizer(gfs, !(optimize_flags & GIF_OPT_KEEPEMPTY));
-	Gif_DeleteColormap(in_global_map);
-	Gif_DeleteColormap(all_colormap);
+	Gif_DeleteColormap(complex_cm);
 }

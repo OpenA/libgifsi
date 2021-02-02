@@ -84,14 +84,17 @@ static void _Ex_(erase_data_area)(Gif_OptBounds ob, UINT_t *dst)
  * APPLY A GIF FRAME OR DISPOSAL TO AN IMAGE DESTINATION
  **/
 static void _Ex_(apply_frame)(
-	Gif_Stream* gfs, Gif_Image* gfi,
-	UINT_t *dst,
-	bool replace, const bool save_uncompressed)
+	Gif_Colormap *gcm,
+	Gif_Stream   *gfs,
+	Gif_Image    *gfi,
+	UINT_t       *dst,
+	bool replace,
+	const bool save_uncompressed)
 {
 	int i, x, y;
 	bool was_compressed = false;
 	UINT_t map[256];
-	Gif_Colormap *colormap = gfi->local ? gfi->local : in_global_map;
+	Gif_Colormap *colormap = gfi->local ?: gcm;
 	Gif_OptBounds ob = get_safe_bounds(gfi, gfs->screen_width, gfs->screen_height);
 
 	if (!gfi->img) {
@@ -317,6 +320,7 @@ static void _Ex_(get_used_colors)(
 	UINT_t      *last_data,
 	UINT_t      *this_data,
 	Gif_TranColor tColor,
+	const int all_ncol,
 	const unsigned short MAX_W,
 	const unsigned short MAX_H
 ) {
@@ -325,8 +329,6 @@ static void _Ex_(get_used_colors)(
 		left   = bounds->left,
 		width  = bounds->width,
 		height = bounds->height;
-
-	const int all_ncol = all_colormap->ncol;
 
 	int i, x, y;
 	unsigned char *need = Gif_NewArray(unsigned char, all_ncol);
@@ -398,9 +400,10 @@ static Gif_OptData **_Ex_(make_opt_samples)(
 	UINT_t     *prev_data,
 	UINT_t     *last_data,
 	UINT_t     *this_data,
-
-	const int      opt_lvl,
-	const bool     save_uncompressed
+	unsigned    bg_color,
+	const int   all_ncol,
+	const int   opt_lvl,
+	const bool  save_uncompressed
 ) {
 	const unsigned short max_w = gfs->screen_width,
 	                     max_h = gfs->screen_height;
@@ -447,7 +450,7 @@ static Gif_OptData **_Ex_(make_opt_samples)(
 			_Ex_(swap_arrays)(this_data, next_data);
 			is_next_data_valid = false;
 		} else
-			_Ex_(apply_frame)(gfs, gfi, this_data, false, save_uncompressed);
+			_Ex_(apply_frame)(gfs->global, gfs, gfi, this_data, false, save_uncompressed);
 
 retry_frame:
 		/* find minimum area of difference between this image and last image */
@@ -462,7 +465,7 @@ retry_frame:
 			subimage->top    = ob.top;
 			subimage->width  = ob.width;
 			subimage->height = ob.height;
-			if (background == TColorEmpty)
+			if (bg_color == TColorEmpty)
 				tColor = TColorRequired;
 		}
 
@@ -472,7 +475,7 @@ retry_frame:
 			memcpy(next_data, (disp == GD_Previous ? prev_data : this_data), sizeof(UINT_t) * screen_size);
 			if (disp == GD_Background)
 				_Ex_(erase_data_area)(ob, next_data);
-			_Ex_(apply_frame)(gfs, gfs->images[i + 1], next_data, false, save_uncompressed);
+			_Ex_(apply_frame)(gfs->global, gfs, gfs->images[i + 1], next_data, false, save_uncompressed);
 			is_next_data_valid = true;
 			/* expand border as necessary */
 			if (_Ex_(expand_difference_bounds)(subimage, ob, this_data, next_data))
@@ -480,7 +483,7 @@ retry_frame:
 		}
 		fix_difference_bounds(subimage, max_w, max_h);
 
-		_Ex_(get_used_colors)(subimage, last_data, this_data, tColor, max_w, max_h);
+		_Ex_(get_used_colors)(subimage, last_data, this_data, tColor, all_ncol, max_w, max_h);
 		/* Gifsicle's optimization strategy normally creates frames with ASIS
 			or BACKGROUND disposal (not PREVIOUS disposal). However, there are
 			cases when PREVIOUS disposal is strictly required, or a frame would
@@ -543,9 +546,13 @@ retry_frame:
    20.Aug.1999 - updated to new version that arranges the entire colormap, not
    just the stuff above 256 colors. */
 
-static void _Ex_(make_opt_colormap)(Gif_Stream *gfs, Gif_OptData **opt)
-{
-	int c, cur_ncol, all_ncol = all_colormap->ncol;
+static Gif_Colormap *_Ex_(make_opt_colormap)(
+	Gif_Stream    *gfs,
+	Gif_OptData  **opt,
+	Gif_Colormap  *complex_cm,
+	const unsigned bg_color
+) {
+	int c, cur_ncol, all_ncol = complex_cm->ncol;
 
 	unsigned i;
 
@@ -575,7 +582,7 @@ static void _Ex_(make_opt_colormap)(Gif_Stream *gfs, Gif_OptData **opt)
 		penalty[c] = 0;
 
 	for (i = 0; i < gfs->nimages; i++) {
-		increment_penalties(opt[i]->needed_colors, penalty, opt[i]->active_penalty);
+		increment_penalties(opt[i]->needed_colors, all_ncol, penalty, opt[i]->active_penalty);
 	}
 
 	/* Loop, removing one color at a time. */
@@ -595,7 +602,7 @@ static void _Ex_(make_opt_colormap)(Gif_Stream *gfs, Gif_OptData **opt)
 		for (i = 0; i < gfs->nimages; i++) {
 			unsigned char *need = opt[i]->needed_colors;
 			if (opt[i]->global_penalty > 0 && need[removed] == TColorRequired) {
-				increment_penalties(need, penalty, -opt[i]->active_penalty);
+				increment_penalties(need, all_ncol, penalty, -opt[i]->active_penalty);
 				opt[i]->global_penalty   = 0;
 				opt[i]->colormap_penalty = (cur_ncol > 256 ? -1 : 0);
 				     permutation_changed = true;
@@ -608,39 +615,42 @@ static void _Ex_(make_opt_colormap)(Gif_Stream *gfs, Gif_OptData **opt)
 				penalty[c] = 0;
 			for (i = 0; i < gfs->nimages; i++) {
 				increment_penalties(
-				   opt[i]->needed_colors, penalty,
+				   opt[i]->needed_colors, all_ncol, penalty,
 				  (opt[i]->active_penalty = opt[i]->global_penalty));
 			}
 			permutation_changed = true;
 		}
 	}
 
-	/* make sure background is in the global colormap */
-	if (background != TColorEmpty && ordering[background] >= TColorLimit) {
+	/* make sure bg_color is in the global colormap */
+	if (bg_color != TColorEmpty && ordering[bg_color] >= TColorLimit) {
 		UINT_t other = permute[255];
-		ordering[other] = ordering[background];
-		ordering[background] = 255;
+		ordering[other] = ordering[bg_color];
+		ordering[bg_color] = 255;
 	}
 
 	/* assign global colormap based on permutation */
-	gfs->global = Gif_NewColormap(nglobal_all, 256);
+	Gif_Colormap *old_gcm =  gfs->global,
+	             *new_gcm = (gfs->global = Gif_NewColormap(nglobal_all, 256));
 
 	for (c = 1; c < all_ncol; c++) {
 		if (ordering[c] < 256) {
-			gfs->global->col[ordering[c]] = all_colormap->col[c];
-			all_colormap->col[c].pixel = ordering[c];
+			new_gcm->col[ordering[c]] = complex_cm->col[c];
+			complex_cm->col[c].pixel = ordering[c];
 		} else
-			all_colormap->col[c].pixel = TColorLimit;
+			complex_cm->col[c].pixel = TColorLimit;
 	}
 
 	/* set the stream's background color */
-	if (background != TColorEmpty)
-		gfs->background = ordering[background];
+	if (bg_color != TColorEmpty)
+		gfs->background = ordering[bg_color];
 
 	/* cleanup */
 	Gif_DeleteArray(penalty);
 	Gif_DeleteArray(permute);
 	Gif_DeleteArray(ordering);
+
+	return old_gcm;
 }
 
 
@@ -763,6 +773,7 @@ static void _Ex_(make_out_frames)(
 	const bool   not_first,
 	const bool   was_compress,
 
+	Gif_Colormap *complex_cm,
 	Gif_CompressInfo *gcinfo
 ) {
 	Gif_Disposal  disp = (gfi->disposal = opt->disposal);
@@ -782,12 +793,12 @@ static void _Ex_(make_out_frames)(
 	gfi->local = NULL;
 
 	/* try to map pixel values into the global colormap */
-	unsigned char *map = prepare_colormap_for(gfi, gfs->global, opt->needed_colors, true);
+	unsigned char *map = prepare_colormap_for(gfi, gfs->global, complex_cm, opt->needed_colors, true);
 
 	if (!map) {
 		/* that didn't work; add a local colormap. */
 		map = prepare_colormap_for(gfi,
-			(gfi->local = Gif_NewColormap(0, 256)), opt->needed_colors, false);
+			(gfi->local = Gif_NewColormap(0, 256)), complex_cm, opt->needed_colors, false);
 	}
 	/* find the new image's colormap and then make new data */
 	unsigned char *data = Gif_NewArray(unsigned char, (size_t)width * (size_t)height);
@@ -846,8 +857,15 @@ static void _Ex_(make_out_frames)(
    invariant: apply O1 + dispose O1 + ... + apply Ok
    === apply U1 + dispose U1 + ... + apply Uk */
 
-static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinfo, const int opt_lvl, const bool save_uncompress)
-{
+static void _Ex_(create_new_image_data)(
+	Gif_Stream   *gfs,
+	Gif_Colormap *complex_cm,
+	unsigned      bg_color,
+	const int     opt_lvl,
+	const bool    save_uncompress,
+
+	Gif_CompressInfo *gcinfo
+) {
 	/* placeholder; maintains pre-optimization
 	   image size so we can apply background disposal */
 	const unsigned short max_w = gfs->screen_width,
@@ -859,8 +877,9 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 	UINT_t *last_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *this_data = Gif_NewArray(UINT_t, screen_size);
 
-	Gif_OptData **opt = _Ex_(make_opt_samples)(gfs, prev_data, last_data, this_data, opt_lvl, save_uncompress);
-	                    _Ex_(make_opt_colormap)(gfs, opt);
+	Gif_OptData **opt = _Ex_(make_opt_samples)(gfs, prev_data, last_data, this_data, bg_color, complex_cm->ncol, opt_lvl, save_uncompress);
+	/* Return the old global colormap, and replace in stream */
+	Gif_Colormap *gcm = _Ex_(make_opt_colormap)(gfs, opt, complex_cm, bg_color);
 
 	/* do first image. Remember to uncompress it if necessary */
 	for (i = 0; i < screen_size; i++)
@@ -882,12 +901,12 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 			_Ex_(copy_data_area)(ob, prev_data, this_data);
 
 		/* set up this_data to be equal to the current image */
-		_Ex_(apply_frame)(gfs, gfi, this_data, false, false);
+		_Ex_(apply_frame)(gcm, gfs, gfi, this_data, false, false);
 
 		/* set bounds and disposal from optdata */
 		Gif_ReleaseUncompressedImage(gfi);
 
-		_Ex_(make_out_frames)(opt[i], gfs, gfi, last_data, this_data, opt_lvl, i > 0, was_compressed, gcinfo);
+		_Ex_(make_out_frames)(opt[i], gfs, gfi, last_data, this_data, opt_lvl, i > 0, was_compressed, complex_cm, gcinfo);
 
 		if (disp == GD_Background)
 			_Ex_(erase_data_area)(ob, this_data);
@@ -898,4 +917,5 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 	Gif_DeleteArray(last_data);
 	Gif_DeleteArray(this_data);
 	Gif_DeleteArray(opt);
+	Gif_DeleteColormap(gcm);
 }

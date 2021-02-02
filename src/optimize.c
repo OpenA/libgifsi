@@ -16,7 +16,7 @@
 typedef signed int penalty_t;
 
 typedef struct {
-	unsigned short left, top, width, height;
+	const unsigned short left, top, width, height, MAX_W, MAX_H;
 } Gif_OptBounds;
 
 typedef struct {
@@ -28,10 +28,6 @@ typedef struct {
 	Gif_Disposal   disposal;
 	Gif_Image     *opt_gfi;
 } Gif_OptData;
-
-/* Screen width and height */
-static unsigned screen_width;
-static unsigned screen_height;
 
 /* Colormap containing all colors in the image. May have >256 colors */
 static Gif_Colormap *all_colormap;
@@ -105,15 +101,27 @@ static void all_colormap_add(const Gif_Colormap* src)
 /*****
  * MANIPULATING IMAGE AREAS
  **/
-static Gif_OptBounds safe_bounds(Gif_Image *area)
-{
+#define get_safe_bounds(area, max_w, max_h) new_opt_bounds(\
+	area->left , area->top,\
+	area->width, area->height,\
+	max_w, max_h)
+
+static Gif_OptBounds new_opt_bounds(
+	unsigned short left , unsigned short top,
+	unsigned short width, unsigned short height,
+	unsigned short max_w, unsigned short max_h
+) {
 	/* Returns bounds constrained to lie within the screen. */
-	Gif_OptBounds b;
-	b.left   = _MIN(area->left, screen_width );
-	b.top    = _MIN(area->top , screen_height);
-	b.width  = _MIN(area->left + area->width , screen_width ) - b.left;
-	b.height = _MIN(area->top  + area->height, screen_height) - b.top;
-	return b;
+	bool out_x = left >= max_w,
+	     out_y = top  >= max_h;
+
+	Gif_OptBounds ob = {
+	  .left   = out_x ? max_w : left,  .MAX_W = max_w,
+	  .top    = out_y ? max_h : top,   .MAX_H = max_h,
+	  .width  = out_x ? 0 : _MIN(left + width , max_w) - left,
+	  .height = out_y ? 0 : _MIN(top  + height, max_h) - top
+	};
+	return ob;
 }
 
 
@@ -122,7 +130,7 @@ static Gif_OptBounds safe_bounds(Gif_Image *area)
  *
  * fix_difference_bounds: make sure the image isn't 0x0. */
 
-static void fix_difference_bounds(Gif_OptData *bounds)
+static void fix_difference_bounds(Gif_OptData *bounds, unsigned short MAX_W, unsigned short MAX_H)
 {
 	if (bounds->width == 0 || bounds->height == 0) {
 		bounds->top    = 0;
@@ -131,9 +139,9 @@ static void fix_difference_bounds(Gif_OptData *bounds)
 		bounds->height = 1;
 	}
 	/* assert that image lies completely within screen */
-	assert(bounds->top  < screen_height  && bounds->left < screen_width
-	    && bounds->top  + bounds->height <= screen_height
-	    && bounds->left + bounds->width  <= screen_width);
+	assert(bounds->top  < MAX_H && bounds->left < MAX_W
+	    && bounds->top  + bounds->height <= MAX_H
+	    && bounds->left + bounds->width  <= MAX_W);
 }
 
 
@@ -312,16 +320,17 @@ static bool initialize_optimizer(Gif_Stream *gfs)
 			col->gfc_red = col->gfc_green = col->gfc_blue = i;
 	}
 
-	int any_globals = 0;
+	unsigned i, t;
 	int first_transparent = -1;
+	bool any_globals = false;
 
 	kchist_init(&all_colormap_hist);
-	for (int i = 0; i < gfs->nimages; i++) {
+	for (i = 0; i < gfs->nimages; i++) {
 		Gif_Image *gfi = gfs->images[i];
 		if (gfi->local)
 			all_colormap_add(gfi->local);
 		else
-			any_globals = 1;
+			any_globals = true;
 		if (gfi->transparent >= 0 && first_transparent < 0)
 			first_transparent = i;
 	}
@@ -338,10 +347,13 @@ static bool initialize_optimizer(Gif_Stream *gfs)
 
 	/* find screen_width and screen_height, and clip all images to screen */
 	Gif_CalculateScreenSize(gfs, 0);
-	screen_width  = gfs->screen_width;
-	screen_height = gfs->screen_height;
-	for (int i = 0; i < gfs->nimages; i++)
-		Gif_ClipImage(gfs->images[i], 0, 0, screen_width, screen_height);
+
+	/* Screen width and height */
+	unsigned short MAX_W = gfs->screen_width,
+	               MAX_H = gfs->screen_height;
+
+	for (i = 0; i < gfs->nimages; i++)
+		Gif_ClipImage(gfs->images[i], 0, 0, MAX_W, MAX_H);
 
 	/* choose background */
 	if (gfs->images[0]->transparent < 0

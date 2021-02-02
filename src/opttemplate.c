@@ -46,62 +46,39 @@ _Ex_(sort_permutation)(UINT_t *perm, int size, penalty_t *values, bool is_down) 
 	return perm;
 }
 
+void _Ex_(swap_arrays)(UINT_t *ptr_1, UINT_t *ptr_2)
+{
+	UINT_t *t_ptr = ptr_1;
+	        ptr_1 = ptr_2;
+	        ptr_2 = t_ptr;
+}
+
 
 /*****
  * MANIPULATING IMAGE AREAS
  **/
-static void _Ex_(copy_data_area)(
-	UINT_t *dst, UINT_t *src,
-	const unsigned left, const unsigned top,
-	const unsigned width, const unsigned height
-) {
-	dst += top * screen_width + left;
-	src += top * screen_width + left;
-	for (unsigned y = 0; y < height; y++) {
-		memcpy(dst, src, sizeof(UINT_t) * width);
-		dst += screen_width;
-		src += screen_width;
-	}
-}
-
-static void _Ex_(copy_data_area_img)(UINT_t *dst, UINT_t *src, Gif_Image *img)
+static void _Ex_(copy_data_area)(Gif_OptBounds ob, UINT_t *dst, UINT_t *src)
 {
-	Gif_OptBounds ob;
-
-	if (img != NULL) {
-		ob = safe_bounds(img);
-		_Ex_(copy_data_area)(dst, src, ob.left, ob.top, ob.width, ob.height);
+	dst += ob.top * ob.MAX_W + ob.left;
+	src += ob.top * ob.MAX_W + ob.left;
+	for (unsigned short y = 0; y < ob.height; y++) {
+		memcpy(dst, src, sizeof(UINT_t) * ob.width);
+		dst += ob.MAX_W;
+		src += ob.MAX_W;
 	}
 }
 
-static void _Ex_(erase_data_area)(
-	UINT_t *dst,
-	const unsigned left, const unsigned top,
-	const unsigned width, const unsigned height
-) {
-	dst += top * screen_width + left;
-	for (unsigned y = 0; y < height; y++) {
-		for (unsigned x = 0; x < width; x++)
+static void _Ex_(erase_data_area)(Gif_OptBounds ob, UINT_t *dst)
+{
+	unsigned short x, y;
+	dst += ob.top * ob.MAX_W + ob.left;
+	for (y = 0; y < ob.height; y++) {
+		for (x = 0; x < ob.width; x++)
 			dst[x] = TRANSP;
-		dst += screen_width;
+		dst += ob.MAX_W;
 	}
 }
 
-static void _Ex_(erase_data_area_img)(UINT_t *dst, Gif_Image *img)
-{
-	Gif_OptBounds ob;
-
-	if (img != NULL) {
-		ob = safe_bounds(img);
-		_Ex_(erase_data_area)(dst, ob.left, ob.top, ob.width, ob.height);
-	}
-}
-
-static void _Ex_(erase_screen)(UINT_t *dst, const unsigned screen_size)
-{
-	for (unsigned i = 0; i < screen_size; i++)
-		*dst++ = TRANSP;
-}
 
 /*****
  * APPLY A GIF FRAME OR DISPOSAL TO AN IMAGE DESTINATION
@@ -115,7 +92,7 @@ static void _Ex_(apply_frame)(
 	bool was_compressed = false;
 	UINT_t map[256];
 	Gif_Colormap *colormap = gfi->local ? gfi->local : in_global_map;
-	Gif_OptBounds ob = safe_bounds(gfi);
+	Gif_OptBounds ob = get_safe_bounds(gfi, gfs->screen_width, gfs->screen_height);
 
 	if (!gfi->img) {
 		was_compressed = true;
@@ -138,7 +115,7 @@ static void _Ex_(apply_frame)(
 		replace = true;
 
 	/* map the image */
-	dst += ob.left + ob.top * (unsigned) screen_width;
+	dst += ob.left + ob.top * (unsigned)ob.MAX_W;
 	for (y = 0; y < ob.height; y++) {
 		unsigned char *gfi_pointer = gfi->img[y];
 
@@ -147,7 +124,7 @@ static void _Ex_(apply_frame)(
 			if (replace || new_pixel != TRANSP)
 				dst[x] = new_pixel;
 		}
-		dst += screen_width;
+		dst += ob.MAX_W;
 	}
 	if (was_compressed && !save_uncompressed)
 		Gif_ReleaseUncompressedImage(gfi);
@@ -161,42 +138,45 @@ static void _Ex_(apply_frame)(
    the changes and store it in 'bounds'. */
 
 static void _Ex_(find_difference_bounds)(
-	Gif_OptData *bounds, Gif_Image *gfi,
-	UINT_t *last_data, UINT_t *this_data,
+	Gif_OptData  *bounds,
+	Gif_OptBounds ob,
+
+	UINT_t *last_data,
+	UINT_t *this_data,
+
 	const bool use_current_bounds
 ) {
-	int lf, rt, lf_min, rt_max, tp, bt, x, y;
+	unsigned short lf, rt, lf_min, rt_max, tp, bt, x, y;
 
 	/* 1.Aug.99 - use current bounds if possible, since this function is a speed
 		bottleneck */
 	if (use_current_bounds) {
-		Gif_OptBounds ob = safe_bounds(gfi);
 		lf_min = ob.left;
 		rt_max = ob.left + ob.width - 1;
 		tp = ob.top;
 		bt = ob.top + ob.height - 1;
 	} else {
 		lf_min = 0;
-		rt_max = screen_width - 1;
+		rt_max = ob.MAX_W - 1;
 		tp = 0;
-		bt = screen_height - 1;
+		bt = ob.MAX_H - 1;
 	}
-	while (tp < screen_height && !memcmp(
-		last_data + screen_width * tp,
-		this_data + screen_width * tp,
-		            screen_width * sizeof(UINT_t)))
+	while (tp < ob.MAX_H && !memcmp(
+		last_data + ob.MAX_W * tp,
+		this_data + ob.MAX_W * tp,
+		            ob.MAX_W * sizeof(UINT_t)))
 		tp++;
 	while (bt >= tp && !memcmp(
-		last_data + screen_width * bt,
-		this_data + screen_width * bt,
-		            screen_width * sizeof(UINT_t)))
+		last_data + ob.MAX_W * bt,
+		this_data + ob.MAX_W * bt,
+		            ob.MAX_W * sizeof(UINT_t)))
 		bt--;
-	lf = screen_width;
+	lf = ob.MAX_W;
 	rt = 0;
 
 	for (y = tp; y <= bt; y++) {
-		UINT_t *ld = last_data + screen_width * y;
-		UINT_t *td = this_data + screen_width * y;
+		UINT_t *ld = last_data + ob.MAX_W * y;
+		UINT_t *td = this_data + ob.MAX_W * y;
 		for (x = lf_min; x < lf; x++)
 			if (ld[x] != td[x])
 				break;
@@ -210,8 +190,8 @@ static void _Ex_(find_difference_bounds)(
 
 	/* 19.Aug.1999 - handle case when there's no difference between frames */
 	if (tp > bt) {
-		tp = bt = gfi->top;
-		lf = rt = gfi->left;
+		tp = bt = ob.top;
+		lf = rt = ob.left;
 	}
 	bounds->left   = lf;
 	bounds->top    = tp;
@@ -228,103 +208,94 @@ static void _Ex_(find_difference_bounds)(
    old bounds, which are also the maximum bounds, are passed in
    'this_bounds'. */
 
-static bool
-_Ex_(expand_difference_bounds)(Gif_OptData *bounds, Gif_Image *gfi,
-                               UINT_t *this_data, UINT_t *next_data)
-{
-	int x, y;
-	bool expanded = false;
-	Gif_OptBounds ob = safe_bounds(gfi);
+static bool _Ex_(expand_difference_bounds)(
+	Gif_OptData  *bounds,
+	Gif_OptBounds ob,
 
-	if (bounds->width <= 0 || bounds->height <= 0) {
+	UINT_t *this_data,
+	UINT_t *next_data
+) {
+	unsigned short x, y,
+	      l = ob.left, w = ob.width,
+	      t = ob.top,  h = ob.height;
+	bool ok = false;
+
+	if (!bounds->width || !bounds->height) {
 		bounds->left   = bounds->top = 0;
-		bounds->width  = screen_width;
-		bounds->height = screen_height;
+		bounds->width  = ob.MAX_W;
+		bounds->height = ob.MAX_H;
 	}
 
 	/* 20.Nov.2013 - The image `bounds` might be larger than `this_bounds`
 		because of a previous frame's background disposal. Don't accidentally
 		shrink `this_bounds`. */
-	if (ob.left > bounds->left) {
-		ob.width = (ob.left + ob.width) - bounds->left;
-		ob.left  = bounds->left;
+	if (l > bounds->left) {
+		w = (l + w) - bounds->left;
+		l = bounds->left;
 	}
-	if (ob.top > bounds->top) {
-		ob.height = (ob.top + ob.height) - bounds->top;
-		ob.top = bounds->top;
+	if (t > bounds->top) {
+		h = (t + h) - bounds->top;
+		t = bounds->top;
 	}
-	if (ob.left + ob.width < bounds->left + bounds->width)
-		ob.width = bounds->left + bounds->width - ob.left;
-	if (ob.top + ob.height < bounds->top + bounds->height)
-		ob.height = bounds->top + bounds->height - ob.top;
+	if (l + w < bounds->left + bounds->width)
+		w = bounds->left + bounds->width - l;
+	if (t + h < bounds->top + bounds->height)
+		h = bounds->top + bounds->height - t;
 
-	for (; ob.top < bounds->top; ob.top++, ob.height--) {
-		UINT_t *targ = this_data + screen_width * ob.top;
-		UINT_t *next = next_data + screen_width * ob.top;
-		for (x = ob.left; x < ob.left + ob.width; x++) {
-			if (targ[x] != TRANSP && next[x] == TRANSP) {
-				expanded = true;
-				goto found_top;
-			}
+	for (; t < bounds->top; t++, h--) {
+		UINT_t *targ = this_data + ob.MAX_W * t;
+		UINT_t *next = next_data + ob.MAX_W * t;
+		for (x = l; x < l + w; x++) {
+			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
+				break; //goto found_top;
 		}
 	}
 
-found_top:
-	for (; ob.top + ob.height > bounds->top + bounds->height; ob.height--) {
-		UINT_t *targ = this_data + screen_width * (ob.top + ob.height - 1);
-		UINT_t *next = next_data + screen_width * (ob.top + ob.height - 1);
-		for (x = ob.left; x < ob.left + ob.width; x++) {
-			if (targ[x] != TRANSP && next[x] == TRANSP) {
-				expanded = true;
-				goto found_bottom;
-			}
+//found_top:
+	for (; t + h > bounds->top + bounds->height; h--) {
+		UINT_t *targ = this_data + ob.MAX_W * (t + h - 1);
+		UINT_t *next = next_data + ob.MAX_W * (t + h - 1);
+		for (x = l; x < l + w; x++) {
+			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
+				break; //goto found_bottom;
 		}
 	}
 
-found_bottom:
-	for (; ob.left < bounds->left; ob.left++, ob.width--) {
-		UINT_t *targ = this_data + ob.left;
-		UINT_t *next = next_data + ob.left;
-		for (y = ob.top; y < ob.top + ob.height; y++) {
-			if (targ[y * screen_width] != TRANSP
-			 && next[y * screen_width] == TRANSP) {
-				expanded = true;
-				goto found_left;
-			}
+//found_bottom:
+	for (; l < bounds->left; l++, w--) {
+		UINT_t *targ = this_data + l;
+		UINT_t *next = next_data + l;
+		for (y = t; y < t + h; y++) {
+			if ((ok = targ[y * ob.MAX_W] != TRANSP
+			       && next[y * ob.MAX_W] == TRANSP))
+				break; //goto found_left;
 		}
 	}
 
-found_left:
-	for (; ob.left + ob.width > bounds->left + bounds->width; ob.width--) {
-		UINT_t *targ = this_data + ob.left + ob.width - 1;
-		UINT_t *next = next_data + ob.left + ob.width - 1;
-		for (y = ob.top; y < ob.top + ob.height; y++) {
-			if (targ[y * screen_width] != TRANSP
-			 && next[y * screen_width] == TRANSP) {
-				expanded = true;
-				goto found_right;
-			}
+//found_left:
+	for (; l + w > bounds->left + bounds->width; w--) {
+		UINT_t *targ = this_data + l + w - 1;
+		UINT_t *next = next_data + l + w - 1;
+		for (y = t; y < t + h; y++) {
+			if ((ok = targ[y * ob.MAX_W] != TRANSP
+			       && next[y * ob.MAX_W] == TRANSP))
+				break; //goto found_right;
 		}
 	}
 
-found_right:
-	if (!expanded) {
-		for (y = ob.top; y < ob.top + ob.height; y++) {
-		UINT_t *targ = this_data + y * screen_width;
-		UINT_t *next = next_data + y * screen_width;
-		for (x = ob.left; x < ob.left + ob.width; x++)
-			if (targ[x] != TRANSP && next[x] == TRANSP) {
-				expanded = true;
+//found_right:
+	for (y = t; y < t + h && ok; y++) {
+		UINT_t *targ = this_data + y * ob.MAX_W;
+		UINT_t *next = next_data + y * ob.MAX_W;
+		for (x = l; x < l + w; x++) {
+			if ((ok = targ[x] != TRANSP && next[x] == TRANSP))
 				break;
-			}
 		}
 	}
+	bounds->width  = w; bounds->left = l;
+	bounds->height = h; bounds->top  = t;
 
-	bounds->left   = ob.left;
-	bounds->top    = ob.top;
-	bounds->width  = ob.width;
-	bounds->height = ob.height;
-	return expanded;
+	return ok;
 }
 
 
@@ -341,9 +312,14 @@ found_right:
    MUST be set. (This happens on the first image if the background should be
    transparent.) */
 
-static void _Ex_(get_used_colors)(Gif_OptData *bounds,
-         UINT_t *last_data, UINT_t *this_data, int use_transparency)
-{
+static void _Ex_(get_used_colors)(
+	Gif_OptData *bounds,
+	UINT_t      *last_data,
+	UINT_t      *this_data,
+	int use_transparency,
+	const unsigned short MAX_W,
+	const unsigned short MAX_H
+) {
 	const unsigned short
 		top    = bounds->top,
 		left   = bounds->left,
@@ -362,12 +338,12 @@ static void _Ex_(get_used_colors)(Gif_OptData *bounds,
 		must be in the map; need == 1 means the color may be replaced by
 		transparency. */
 	for (y = top; y < (top + height); y++) {
-		UINT_t *last = last_data + screen_width * y + left;
-		UINT_t *data = this_data + screen_width * y + left;
+		UINT_t *last = last_data + MAX_W * y + left;
+		UINT_t *data = this_data + MAX_W * y + left;
 		for (x = 0; x < width; x++) {
 			if (data[x] != last[x])
 				need[data[x]] = REQUIRED;
-			else if (need[data[x]] == 0)
+			else if (need[data[x]] == TRANSP)
 				need[data[x]] = REPLACE_TRANSP;
 		}
 	}
@@ -375,10 +351,7 @@ static void _Ex_(get_used_colors)(Gif_OptData *bounds,
 		need[TRANSP] = REQUIRED;
 
 	/* check for too many colors; also force transparency if needed */
-	int count[3];
-
-	/* Count distinct pixels in each category */
-	count[0] = count[1] = count[2] = 0;
+	int count[3] = { 0, 0, 0 };
 
 	for (i = 0; i < all_ncol; i++)
 		count[need[i]]++;
@@ -422,42 +395,49 @@ static void _Ex_(get_used_colors)(Gif_OptData *bounds,
  **/
 static void _Ex_(create_subimages)(
 	Gif_Stream *gfs,
-	UINT_t *last_data, UINT_t *this_data,
-	const unsigned screen_size, const int opt_lvl, const bool save_uncompressed
+	UINT_t     *prev_data,
+	UINT_t     *last_data,
+	UINT_t     *this_data,
+
+	const int      opt_lvl,
+	const bool     save_uncompressed
 ) {
+	const unsigned short max_w = gfs->screen_width,
+	                     max_h = gfs->screen_height;
+	const unsigned screen_size = (unsigned)max_w * (unsigned)max_h;
+	      unsigned i;
+
 	Gif_Image *last_gfi = NULL;
+	Gif_Disposal last_disp = GD_None;
 
 	bool is_next_data_valid = false;
 
 	UINT_t *next_data = Gif_NewArray(UINT_t, screen_size);
-	UINT_t *temp_data = Gif_NewArray(UINT_t, screen_size);
 
 	/* PRECONDITION:
-	   temp_data -- garbage
+	   prev_data -- garbage
 	   last_data -- optimized image after disposal of previous optimized frame
 	   this_data -- input image after disposal of previous input frame
 	   next_data -- input image after application of current input frame,
 	                if next_image_valid */
-	for (unsigned i = 0; i < gfs->nimages; i++) {
+	for (i = 0; i < gfs->nimages; i++) {
 
 		Gif_Image *gfi = gfs->images[i];
 		Gif_OptData *subimage = new_opt_data();
 
-		bool is_local_ctab = !!gfi->local;
-		bool is_not_last = i < gfs->nimages - 1;
+		const Gif_Disposal disp = gfi->disposal;
+		const Gif_OptBounds ob  = get_safe_bounds(gfi, max_w, max_h);
+
+		bool has_loc_ctab = i && gfi->local;
+		bool is_not_last  = i < gfs->nimages - 1;
 
 		/* save previous data if necessary */
-		if (gfi->disposal == GD_Previous || (
-			is_local_ctab && i > 0 && last_gfi->disposal > GD_Asis
-		)) {
-			memcpy(temp_data, this_data, sizeof(UINT_t) * screen_size);
-		}
+		if (disp == GD_Previous || (has_loc_ctab && last_disp > GD_Asis))
+			memcpy(prev_data, this_data, sizeof(UINT_t) * screen_size);
 
 		/* set this_data equal to the current image */
 		if (is_next_data_valid) {
-			UINT_t *temp = this_data;
-			this_data = next_data;
-			next_data = temp;
+			_Ex_(swap_arrays)(this_data, next_data);
 			is_next_data_valid = false;
 		} else
 			_Ex_(apply_frame)(gfs, gfi, this_data, false, save_uncompressed);
@@ -466,11 +446,9 @@ retry_frame:
 		/* find minimum area of difference between this image and last image */
 		subimage->disposal = GD_Asis;
 		if (i > 0) {
-			
-			_Ex_(find_difference_bounds)(subimage, gfi, last_data, this_data,
-				(!last_gfi || last_gfi->disposal == GD_None || last_gfi->disposal == GD_Asis));
+			_Ex_(find_difference_bounds)(subimage, ob, last_data, this_data,
+				(last_disp == GD_None || last_disp == GD_Asis));
 		} else {
-			Gif_OptBounds ob = safe_bounds(gfi);
 			subimage->left   = ob.left;
 			subimage->top    = ob.top;
 			subimage->width  = ob.width;
@@ -478,40 +456,36 @@ retry_frame:
 		}
 
 		/* might need to expand difference border on background disposal */
-		if(( gfi->disposal == GD_Background
-		  || gfi->disposal == GD_Previous)
-		  && is_not_last
-		) {
+		if (is_not_last && (disp == GD_Background || disp == GD_Previous)) {
 			/* set up next_data */
 			Gif_Image *next_gfi = gfs->images[i + 1];
-			memcpy(next_data, (gfi->disposal == GD_Previous ? temp_data : this_data), sizeof(UINT_t) * screen_size);
-			if (gfi->disposal == GD_Background)
-				_Ex_(erase_data_area_img)(next_data, gfi);
+			memcpy(next_data, (disp == GD_Previous ? prev_data : this_data), sizeof(UINT_t) * screen_size);
+			if (disp == GD_Background)
+				_Ex_(erase_data_area)(ob, next_data);
 			_Ex_(apply_frame)(gfs, next_gfi, next_data, false, save_uncompressed);
 			is_next_data_valid = true;
 			/* expand border as necessary */
-			if (_Ex_(expand_difference_bounds)(subimage, gfi, this_data, next_data))
+			if (_Ex_(expand_difference_bounds)(subimage, ob, this_data, next_data))
 				subimage->disposal = GD_Background;
 		}
-		fix_difference_bounds(subimage);
+		fix_difference_bounds(subimage, max_w, max_h);
 
 		/* set map of used colors */
 		int use_transparency = i > 0 ? opt_lvl > 1 : background == TRANSP ? 2 : 0;
 
-		_Ex_(get_used_colors)(subimage, last_data, this_data, use_transparency);
+		_Ex_(get_used_colors)(subimage, last_data, this_data, use_transparency, max_w, max_h);
 		/* Gifsicle's optimization strategy normally creates frames with ASIS
 			or BACKGROUND disposal (not PREVIOUS disposal). However, there are
 			cases when PREVIOUS disposal is strictly required, or a frame would
 			require more than 256 colors. Detect this case and try to recover. */
 		if (subimage->required_color_count > 256) {
-			if (i > 0 && is_local_ctab) {
+			if (has_loc_ctab) {
 				Gif_OptData *subimage = (Gif_OptData*) last_gfi->user_data;
-				if(( last_gfi->disposal == GD_Previous
-				  || last_gfi->disposal == GD_Background)
-				  && subimage->disposal != last_gfi->disposal
-				) {
-					subimage->disposal = last_gfi->disposal;
-					memcpy(last_data, temp_data, sizeof(UINT_t) * screen_size);
+				if (subimage->disposal != last_disp && (
+					last_disp == GD_Previous || last_disp == GD_Background
+				)) {
+					subimage->disposal = last_disp;
+					memcpy(last_data, prev_data, sizeof(UINT_t) * screen_size);
 					goto retry_frame;
 				}
 			}
@@ -526,21 +500,21 @@ retry_frame:
 		want to compare the current image (only obtainable through unoptimized
 		disposal) with what WILL be left after the previous OPTIMIZED image's
 		disposal. This fix is repeated in create_new_image_data */
-		if (subimage->disposal == GD_Background)
-			_Ex_(erase_data_area)(last_data, subimage->left, subimage->top, subimage->width, subimage->height);
-		else
-			_Ex_(copy_data_area)(last_data, this_data, subimage->left, subimage->top, subimage->width, subimage->height);
+		Gif_OptBounds sio = get_safe_bounds(subimage, max_w, max_h);
 
-		if (last_gfi->disposal == GD_Background)
-			_Ex_(erase_data_area_img)(this_data, last_gfi);
-		else if (last_gfi->disposal == GD_Previous) {
-			UINT_t *temp = temp_data;
-			temp_data = this_data;
-			this_data = temp;
-		}
+		if (subimage->disposal == GD_Background)
+			_Ex_(erase_data_area)(sio, last_data);
+		else
+			_Ex_(copy_data_area)(sio, last_data, this_data);
+
+		if (last_disp == GD_Background)
+			_Ex_(erase_data_area)(get_safe_bounds(last_gfi, max_w, max_h), this_data);
+		else if (last_disp == GD_Previous)
+			_Ex_(swap_arrays)(prev_data, this_data);
+
+		last_disp = disp;
 	}
 	Gif_DeleteArray(next_data);
-	Gif_DeleteArray(temp_data);
 }
 
 
@@ -646,7 +620,7 @@ static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 	}
 
 	/* assign out_global_map based on permutation */
-	out_global_map = Gif_NewFullColormap(nglobal_all, 256);
+	gfs->global = out_global_map = Gif_NewColormap(nglobal_all, 256);
 
 	for (c = 1; c < all_ncol; c++) {
 		if (ordering[c] < 256) {
@@ -670,40 +644,25 @@ static void _Ex_(create_out_global_map)(Gif_Stream *gfs)
 /*****
  * CREATE OUTPUT FRAME DATA
  * 
- * simple_frame_data: just copy the data from the image into the frame data.
-   No funkiness, no transparency, nothing */
-
-static void _Ex_(simple_frame_data)(Gif_Image *gfi, unsigned char *map, UINT_t *this_data)
-{
-	Gif_OptBounds ob = safe_bounds(gfi);
-	unsigned scan_width = gfi->width;
-
-	for (unsigned y = 0; y < ob.height; y++) {
-		UINT_t *from = this_data + screen_width * (y + ob.top) + ob.left;
-		unsigned char *into = gfi->image_data + y * scan_width;
-		for (unsigned x = 0; x < ob.width; x++)
-			*into++ = map[*from++];
-	}
-}
-
-/* transp_frame_data: copy the frame data into the actual image, using
+ * transp_frame_data: copy the frame data into the actual image, using
    transparency occasionally according to a heuristic described below */
 
-static void
-_Ex_(transp_frame_data)(
-	Gif_Stream *gfs, Gif_Image *gfi, Gif_CompressInfo *gcinfo,
-	unsigned char *map, UINT_t *last_data, UINT_t *this_data,
-	const int opt_lvl
+static void _Ex_(transp_frame_data)(
+	Gif_Stream *gfs,
+	Gif_Image  *gfi, 
+	UINT_t     *last_data,
+	UINT_t     *this_data,
+	const bool  need_compress,
+
+	unsigned char    *map,
+	Gif_OptBounds     ob,
+	Gif_CompressInfo *gcinfo
 ) {
-	Gif_OptBounds ob = safe_bounds(gfi);
-	int x, y, transparent = gfi->transparent;
+	short transparent = gfi->transparent;
 	UINT_t *last = NULL, *cur = NULL;
 	unsigned char *data, *begin_same, *t2_data = NULL, *last_for_t2;
-	int nsame = 0;
+	unsigned short x, y, nsame = 0;
 
-  /* First, try w/o transparency. Compare this to the result using
-     transparency and pick the better of the two. */
-	_Ex_(simple_frame_data)(gfi, map, this_data);
 	Gif_FullCompressImage(gfs, gfi, gcinfo);
 	gcinfo->flags |= GIF_WRITE_SHRINK;
 
@@ -750,12 +709,12 @@ _Ex_(transp_frame_data)(
 
 	for (y = 0; y < ob.height; y++) {
 
-		last = last_data + screen_width * (y + ob.top) + ob.left;
-		cur  = this_data + screen_width * (y + ob.top) + ob.left;
+		last = last_data + ob.MAX_W * (y + ob.top) + ob.left;
+		cur  = this_data + ob.MAX_W * (y + ob.top) + ob.left;
 
 		for (x = 0; x < ob.width; x++, data++, cur++, last++) {
 			if (*cur != *last && map[*cur] != transparent) {
-				if (nsame == 1 && data[-1] != transparent && opt_lvl > 2) {
+				if (nsame == 1 && data[-1] != transparent && need_compress) {
 					if (!t2_data)
 						t2_data = Gif_NewArray(unsigned char, (size_t)ob.width * (size_t)ob.height);
 					memcpy(t2_data + (last_for_t2 - gfi->image_data),
@@ -791,6 +750,77 @@ _Ex_(transp_frame_data)(
 	gcinfo->flags &= ~GIF_WRITE_SHRINK;
 }
 
+static void _Ex_(create_out_frame_data)(
+	Gif_Stream *gfs,
+	Gif_Image  *gfi,
+	UINT_t     *last_data,
+	UINT_t     *this_data,
+	const int   opt_lvl,
+	const bool  not_first,
+	const bool  was_compress,
+
+	Gif_CompressInfo *gcinfo
+){
+	Gif_OptData   *opt = (Gif_OptData *)  gfi->user_data;
+	Gif_Disposal  disp = (gfi->disposal = opt->disposal);
+	unsigned short top = (gfi->top      = opt->top     ),
+	              left = (gfi->left     = opt->left    ),
+	          x, width = (gfi->width    = opt->width   ),
+	         y, height = (gfi->height   = opt->height  );
+
+	Gif_OptBounds   ob = new_opt_bounds(
+		left, top, width, height, gfs->screen_width, gfs->screen_height
+	);
+
+	if (not_first)
+		gfi->interlace = 0;
+
+	/* find the new image's colormap and then make new data */
+	unsigned char *map  = prepare_colormap(gfi, opt->needed_colors);
+	unsigned char *data = Gif_NewArray(unsigned char, (size_t)width * (size_t)height);
+
+	/* First, try w/o transparency. Compare this to the result using
+	   transparency and pick the better of the two. */
+	for (y = 0; y < ob.height; y++) {
+		UINT_t *from = this_data + ob.MAX_W * (y + ob.top) + ob.left;
+		unsigned char *into = data + y * width;
+		for (x = 0; x < ob.width; x++)
+			*into++ = map[*from++];
+	}
+	Gif_SetUncompressedImage(gfi, data, Gif_Free, false);
+
+	/* don't use transparency on first frame */
+	if (opt_lvl > 1 && not_first && gfi->transparent >= 0) {
+		_Ex_(transp_frame_data)(gfs, gfi, last_data, this_data, opt_lvl > 2, map, ob, gcinfo);
+	}
+	if (gfi->img) {
+		if (was_compress || opt_lvl > 1) {
+			Gif_FullCompressImage(gfs, gfi, gcinfo);
+			Gif_ReleaseUncompressedImage(gfi);
+		} else  /* bug fix 22.May.2001 */
+			Gif_ReleaseCompressedImage(gfi);
+	}
+	Gif_DeleteArray(map);
+
+	delete_opt_data(opt);
+	gfi->user_data = NULL;
+
+	/* Set up last_data and this_data. last_data must contain this_data + new
+	disposal. this_data must contain this_data + old disposal. */
+	switch(disp) {
+	case GD_None:
+	case GD_Asis:
+		_Ex_(copy_data_area)(ob, last_data, this_data);
+		break;
+	case GD_Background:
+		_Ex_(erase_data_area)(ob, last_data);
+	case GD_Previous:
+		break;
+	default:
+		__assert_fail("libgifsi: optimized frame has strange disposal", __FILE__, __LINE__, __ASSERT_FUNCTION);
+	}
+}
+
 
 /*****
  * CREATE NEW IMAGE DATA
@@ -806,7 +836,6 @@ _Ex_(transp_frame_data)(
 
 static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinfo, const int opt_lvl, const bool save_uncompress)
 {
-	Gif_Image cur_unopt_gfi;
 	/* placeholder; maintains pre-optimization
 	   image size so we can apply background disposal */
 	const unsigned short max_w = gfs->screen_width,
@@ -814,93 +843,50 @@ static void _Ex_(create_new_image_data)(Gif_Stream *gfs, Gif_CompressInfo *gcinf
 	const unsigned screen_size = (unsigned)max_w * (unsigned)max_h;
 	      unsigned i;
 
-	UINT_t *temp_data = Gif_NewArray(UINT_t, screen_size);
+	UINT_t *prev_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *last_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *this_data = Gif_NewArray(UINT_t, screen_size);
 
 	/* do first image. Remember to uncompress it if necessary */
-	_Ex_(erase_screen)(last_data, screen_size);
-	_Ex_(erase_screen)(this_data, screen_size);
+	for (i = 0; i < screen_size; i++)
+		prev_data[i] = last_data[i] = this_data[i] = TRANSP;
 
-	_Ex_(create_subimages)(gfs, last_data, this_data, screen_size, opt_lvl, save_uncompress);
+	_Ex_(create_subimages)(gfs, prev_data, last_data, this_data, opt_lvl, save_uncompress);
 	_Ex_(create_out_global_map)(gfs);
 
-	gfs->global = out_global_map;
-
 	/* do first image. Remember to uncompress it if necessary */
-	_Ex_(erase_screen)(last_data, screen_size);
-	_Ex_(erase_screen)(this_data, screen_size);
+	for (i = 0; i < screen_size; i++)
+		prev_data[i] = last_data[i] = this_data[i] = TRANSP;
 
 	for (i = 0; i < gfs->nimages; i++) {
 
-		Gif_Image *cur_gfi = gfs->images[i];
-		Gif_OptData *opt = (Gif_OptData *)cur_gfi->user_data;
-
-		bool was_compressed = !cur_gfi->img;
-
-		/* save previous data if necessary */
-		if (cur_gfi->disposal == GD_Previous) {
-			_Ex_(copy_data_area_img)(temp_data, this_data, cur_gfi);
-		}
-
-		/* set up this_data to be equal to the current image */
-		_Ex_(apply_frame)(gfs, cur_gfi, this_data, false, false);
+		Gif_Image *gfi = gfs->images[i];
 
 		/* save actual bounds and disposal from unoptimized version so we can
 		apply the disposal correctly next time through */
-		cur_unopt_gfi = *cur_gfi;
+		const Gif_OptBounds ob  = get_safe_bounds(gfi, max_w, max_h);
+		const Gif_Disposal disp = gfi->disposal;
+
+		bool was_compressed = !gfi->img;
+
+		/* save previous data if necessary */
+		if (disp == GD_Previous)
+			_Ex_(copy_data_area)(ob, prev_data, this_data);
+
+		/* set up this_data to be equal to the current image */
+		_Ex_(apply_frame)(gfs, gfi, this_data, false, false);
 
 		/* set bounds and disposal from optdata */
-		Gif_ReleaseUncompressedImage(cur_gfi);
+		Gif_ReleaseUncompressedImage(gfi);
 
-		cur_gfi->left     = opt->left;
-		cur_gfi->top      = opt->top;
-		cur_gfi->width    = opt->width;
-		cur_gfi->height   = opt->height;
-		cur_gfi->disposal = opt->disposal;
+		_Ex_(create_out_frame_data)(gfs, gfi, last_data, this_data, opt_lvl, i > 0, was_compressed, gcinfo);
 
-		if (i > 0)
-			cur_gfi->interlace = 0;
-
-		/* find the new image's colormap and then make new data */
-		unsigned char *map = prepare_colormap(cur_gfi, opt->needed_colors);
-		unsigned char *data = Gif_NewArray(unsigned char, (size_t)cur_gfi->width * (size_t)cur_gfi->height);
-
-		Gif_SetUncompressedImage(cur_gfi, data, Gif_Free, false);
-
-		/* don't use transparency on first frame */
-		if (opt_lvl > 1 && i > 0 && cur_gfi->transparent >= 0)
-			_Ex_(transp_frame_data)(gfs, cur_gfi, gcinfo, map, last_data, this_data, opt_lvl);
-		else
-			_Ex_(simple_frame_data)(cur_gfi, map, this_data);
-
-		if (cur_gfi->img) {
-			if (was_compressed || opt_lvl > 1) {
-				Gif_FullCompressImage(gfs, cur_gfi, gcinfo);
-				Gif_ReleaseUncompressedImage(cur_gfi);
-			} else  /* bug fix 22.May.2001 */
-				Gif_ReleaseCompressedImage(cur_gfi);
-		}
-		Gif_DeleteArray(map);
-
-		delete_opt_data(opt);
-		cur_gfi->user_data = 0;
-
-		/* Set up last_data and this_data. last_data must contain this_data + new
-		disposal. this_data must contain this_data + old disposal. */
-		if (cur_gfi->disposal == GD_None || cur_gfi->disposal == GD_Asis)
-			_Ex_(copy_data_area_img)(last_data, this_data, cur_gfi);
-		else if (cur_gfi->disposal == GD_Background)
-			_Ex_(erase_data_area_img)(last_data, cur_gfi);
-		else if (cur_gfi->disposal != GD_Previous)
-			assert(0 && "optimized frame has strange disposal");
-
-		if (cur_unopt_gfi.disposal == GD_Background)
-			_Ex_(erase_data_area_img)(this_data, &cur_unopt_gfi);
-		else if (cur_unopt_gfi.disposal == GD_Previous)
-			_Ex_(copy_data_area_img)(this_data, temp_data, &cur_unopt_gfi);
+		if (disp == GD_Background)
+			_Ex_(erase_data_area)(ob, this_data);
+		else if (disp == GD_Previous)
+			_Ex_(copy_data_area)(ob, this_data, prev_data);
 	}
-	Gif_DeleteArray(temp_data);
+	Gif_DeleteArray(prev_data);
 	Gif_DeleteArray(last_data);
 	Gif_DeleteArray(this_data);
 }

@@ -7,11 +7,8 @@
    as this notice is kept intact and this source code is made available. There
    is no warranty, express or implied. */
 
-#include <config.h>
 #include "gifsicle.h"
 #include "kcolor.h"
-#include <assert.h>
-#include <string.h>
 
 typedef signed int penalty_t;
 

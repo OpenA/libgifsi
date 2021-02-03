@@ -710,12 +710,12 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
                 kchist_add(&kch, xscr[xo].k, 1);
     }
     for (i = 0; i != gfcm->ncol; ++i)
-        kchist_add(&kch, kc_makegfcg(&gfcm->col[i]), (kchist_count_t) -1);
+        kchist_add(&kch, kc_makegfcg(&gfcm->col[i]), (unsigned)-1);
     kchist_compress(&kch);
 
     kcdiversity_init(&div, &kch, 0);
     for (i = 0; i != kch.n && i != gfcm->ncol
-             && kch.h[i].count == (kchist_count_t) -1; ++i)
+             && kch.h[i].count == (unsigned)-1; ++i)
         kcdiversity_choose(&div, i, 0);
 
     nadded = 0;

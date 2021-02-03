@@ -108,20 +108,41 @@ static void kc_test_gamma() {
 }
 #endif
 
-static int kchist_sizes[] = {
+
+/*
+	kchist methods and functions
+ */
+static const int kchist_sizes[] = {
 	4093, 16381, 65521, 262139, 1048571, 4194301,
 	16777213, 67108859, 268435459, 1073741839
 };
 
-static void kchist_grow(kchist *kch);
+static void kchist_grow(kchist *kch)
+{
+	kchistitem *old_h = kch->h;
+
+	int i = 0, old_capacity = kch->capacity ?: kch->n;
+	while (kchist_sizes[i] <= old_capacity)
+		i++;/* do nothing */
+
+	int new_capacity = kch->capacity = kchist_sizes[i];
+	kch->h = Gif_NewArray(kchistitem, new_capacity);
+	kch->n = 0;
+	for (i = 0; i < new_capacity; i++)
+		kch->h[i].count = 0;
+	for (i = 0; i < old_capacity; i++) {
+		if (old_h[i].count)
+			kchist_add(kch, old_h[i].ka.k, old_h[i].count);
+	}
+	Gif_DeleteArray(old_h);
+}
 
 void kchist_init(kchist *kch)
 {
-	int i;
-	kch->h = Gif_NewArray(kchistitem, kchist_sizes[0]);
+	int i, capacity = kch->capacity = kchist_sizes[0];
+	kch->h = Gif_NewArray(kchistitem, capacity);
 	kch->n = 0;
-	kch->capacity = kchist_sizes[0];
-	for (i = 0; i != kch->capacity; ++i)
+	for (i = 0; i < capacity; i++)
 		kch->h[i].count = 0;
 }
 
@@ -131,7 +152,7 @@ void kchist_cleanup(kchist *kch)
 	kch->h = NULL;
 }
 
-kchistitem *kchist_add(kchist *kch, kcolor k, kchist_count_t count)
+kchistitem *kchist_add(kchist *kch, kcolor k, unsigned count)
 {
 	unsigned hash1, hash2 = 0;
 	kacolor ka;
@@ -162,25 +183,8 @@ kchistitem *kchist_add(kchist *kch, kcolor k, kchist_count_t count)
 	}
 	khi->count += count;
 	if (khi->count < count)
-		khi->count = (kchist_count_t)-1;
+		khi->count = (unsigned)-1;
 	return khi;
-}
-
-static void kchist_grow(kchist *kch)
-{
-	kchistitem *oldh = kch->h;
-	int i, oldcapacity = kch->capacity ? kch->capacity : kch->n;
-	for (i = 0; kchist_sizes[i] <= oldcapacity; ++i)
-		/* do nothing */;
-	kch->capacity = kchist_sizes[i];
-	kch->h = Gif_NewArray(kchistitem, kch->capacity);
-	kch->n = 0;
-	for (i = 0; i != kch->capacity; ++i)
-		kch->h[i].count = 0;
-	for (i = 0; i != oldcapacity; ++i)
-		if (oldh[i].count)
-			kchist_add(kch, oldh[i].ka.k, oldh[i].count);
-	Gif_DeleteArray(oldh);
 }
 
 void kchist_compress(kchist *kch)
@@ -200,76 +204,79 @@ void kchist_compress(kchist *kch)
 
 void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 {
-	unsigned gcount[256], lcount[256];
-	unsigned nbackground = 0, ntransparent = 0;
-	int x, y, i, imagei;
+	int c;
+	unsigned short x, y;
+	unsigned i, gcount[256], lcount[256];
+	unsigned transp_count = 0, bg_count = 0;
 	kchist_init(kch);
 
-	for (i = 0; i != 256; ++i)
-		gcount[i] = 0;
+	for (c = 0; c < 256; c++)
+		gcount[c] = 0;
 
 	/* Count pixels */
-	for (imagei = 0; imagei < gfs->nimages; ++imagei)
+	for (i = 0; i < gfs->nimages; i++)
 	{
-		Gif_Image *gfi = gfs->images[imagei];
-		Gif_Colormap *gfcm = gfi->local ?: gfs->global;
-		unsigned *count = gfi->local ? lcount : gcount;
-		unsigned old_transparent_count = 0;
-		int only_compressed = (gfi->img == 0);
-		if (!gfcm)
-			continue;
-		if (count == lcount)
-			for (i = 0; i != 256; ++i)
-				count[i] = 0;
-		if (gfi->transparent >= 0)
-			old_transparent_count = count[gfi->transparent];
+		Gif_Image    *gfi = gfs->images[i];
+		bool was_compress = gfi->img   == NULL,
+		         is_local = gfi->local != NULL;
+		short      transp = gfi->transparent;
+		unsigned   *count = is_local ? lcount : gcount,
+		  prev_transp_cnt = 0;
+
+		if (is_local) {
+			for (c = 0; c < 256; c++)
+				count[c] = 0;
+		}
+		if (transp >= 0)
+			prev_transp_cnt = count[transp];
 
 		/* unoptimize the image if necessary */
-		if (only_compressed)
+		if (was_compress)
 			Gif_UncompressImage(gfs, gfi);
 
 		/* sweep over the image data, counting pixels */
-		for (y = 0; y < gfi->height; ++y)
-		{
-			const unsigned char *data = gfi->img[y];
-			for (x = 0; x < gfi->width; ++x, ++data)
-				++count[*data];
+		for (y = 0; y < gfi->height; y++) {
+			for (x = 0; x < gfi->width; x++)
+				count[ gfi->img[y][x] ] += 1;
 		}
-
 		/* add counted colors to global histogram (local only) */
-		if (gfi->local)
-			for (i = 0; i != gfcm->ncol; ++i)
-				if (count[i] && i != gfi->transparent)
-					kchist_add(kch, kc_makegfcg(&gfcm->col[i]), count[i]);
-		if (gfi->transparent >= 0 && count[gfi->transparent] != old_transparent_count)
-		{
-			ntransparent += count[gfi->transparent] - old_transparent_count;
-			count[gfi->transparent] = old_transparent_count;
+		if (is_local) {
+			Gif_Colormap *cm = gfi->local;
+			for (c = 0; c < cm->ncol; c++) {
+				if (count[c] && c != transp)
+					kchist_add(kch, kc_makegfcg(&cm->col[c]), count[c]);
+			}
 		}
-
+		if (transp >= 0 && count[transp] != prev_transp_cnt) {
+			transp_count += count[transp] - prev_transp_cnt;
+			count[transp] = prev_transp_cnt;
+		}
 		/* if this image has background disposal, count its size towards the
-           background's pixel count */
+		   background's pixel count */
 		if (gfi->disposal == GD_Background)
-			nbackground += (unsigned)gfi->width * (unsigned)gfi->height;
+			bg_count += (unsigned)gfi->width * (unsigned)gfi->height;
 
 		/* throw out compressed image if necessary */
-		if (only_compressed)
+		if (was_compress)
 			Gif_ReleaseUncompressedImage(gfi);
 	}
+	Gif_Colormap *gcm = gfs->global;
+	    bool bg_alpha = gfs->images[0]->transparent >= 0;
 
-	if (gfs->images[0]->transparent < 0 && gfs->global && gfs->background < gfs->global->ncol)
-		gcount[gfs->background] += nbackground;
+	if (!bg_alpha && gcm && gfs->background < gcm->ncol)
+		gcount[gfs->background] += bg_count;
 	else
-		ntransparent += nbackground;
+		transp_count += bg_count;
 
-	if (gfs->global)
-		for (i = 0; i != gfs->global->ncol; ++i)
-			if (gcount[i])
-				kchist_add(kch, kc_makegfcg(&gfs->global->col[i]), gcount[i]);
-
+	if (gcm) {
+		for (c = 0; c < gcm->ncol; c++) {
+			if (gcount[c])
+				kchist_add(kch, kc_makegfcg(&gcm->col[c]), gcount[c]);
+		}
+	}
 	/* now, make the linear histogram from the hashed histogram */
 	kchist_compress(kch);
-	*ntransp_store = ntransparent;
+	*ntransp_store = transp_count;
 }
 
 static int red_kchistitem_compare(const void *va, const void *vb)
@@ -306,6 +313,7 @@ static int popularity_sort_compare(const void *va, const void *vb)
 	const Gif_Color *b = (const Gif_Color *)vb;
 	return a->pixel > b->pixel ? -1 : a->pixel != b->pixel;
 }
+
 
 /* COLORMAP FUNCTIONS return a palette (a vector of Gif_Colors). The
    pixel fields are undefined; the haspixel fields are all 0. */
@@ -1665,7 +1673,7 @@ typedef struct halftone_pixelinfo {
 	double distance, angle;
 } halftone_pixelinfo;
 
-static inline halftone_pixelinfo *halftone_pixel_make(const int w, const int h)
+static halftone_pixelinfo *halftone_pixel_make(int w, int h)
 {
 	int x, y, k;
 	halftone_pixelinfo *hp = Gif_NewArray(halftone_pixelinfo, w * h);
@@ -1679,16 +1687,18 @@ static inline halftone_pixelinfo *halftone_pixel_make(const int w, const int h)
 	return hp;
 }
 
-static inline void halftone_pixel_combine(halftone_pixelinfo *hp, double cx, double cy)
+static void halftone_pixel_combine(halftone_pixelinfo *hp, double cx, double cy)
 {
-	double d = (hp->x - cx) * (hp->x - cx) + (hp->y - cy) * (hp->y - cy);
-	if (hp->distance < 0 || d < hp->distance) {
-		hp->distance = d;
-		hp->angle = atan2(hp->y - cy, hp->x - cx);
+	double n_y = (double)hp->y - cy,
+	       n_x = (double)hp->x - cx,
+	       n_d = n_x * n_x + n_y * n_y;
+	if (hp->distance < 0 || n_d < hp->distance) {
+		hp->distance = n_d;
+		hp->angle = atan2(n_y, n_x);
 	}
 }
 
-static inline int halftone_pixel_compare(const void *va, const void *vb)
+static int halftone_pixel_compare(const void *va, const void *vb)
 {
 	const halftone_pixelinfo *a = (const halftone_pixelinfo *)va;
 	const halftone_pixelinfo *b = (const halftone_pixelinfo *)vb;
@@ -1723,26 +1733,25 @@ static unsigned char *halftone_pixel_matrix(halftone_pixelinfo *hp, int w, int h
 static unsigned char *make_halftone_matrix_square(int w, int h, int nc)
 {
 	halftone_pixelinfo *hp = halftone_pixel_make(w, h);
-	int i;
-	for (i = 0; i != w * h; ++i)
+	int i, size = w * h;
+	for (i = 0; i < size; i++)
 		halftone_pixel_combine(&hp[i], (w - 1) / 2.0, (h - 1) / 2.0);
-	qsort(hp, w * h, sizeof(*hp), halftone_pixel_compare);
+	qsort(hp, size, sizeof(*hp), halftone_pixel_compare);
 	return halftone_pixel_matrix(hp, w, h, nc);
 }
 
 static unsigned char *make_halftone_matrix_triangular(int w, int h, int nc)
 {
 	halftone_pixelinfo *hp = halftone_pixel_make(w, h);
-	int i;
-	for (i = 0; i != w * h; ++i)
-	{
-		halftone_pixel_combine(&hp[i], (w - 1) / 2.0, (h - 1) / 2.0);
-		halftone_pixel_combine(&hp[i], -0.5, -0.5);
-		halftone_pixel_combine(&hp[i], w - 0.5, -0.5);
-		halftone_pixel_combine(&hp[i], -0.5, h - 0.5);
+	int i, size = w * h;
+	for (i = 0; i < size; i++) {
+		halftone_pixel_combine(&hp[i],(w - 1) / 2.0, (h - 1) / 2.0);
+		halftone_pixel_combine(&hp[i],    -0.5,    -0.5);
+		halftone_pixel_combine(&hp[i], w - 0.5,    -0.5);
+		halftone_pixel_combine(&hp[i],    -0.5, h - 0.5);
 		halftone_pixel_combine(&hp[i], w - 0.5, h - 0.5);
 	}
-	qsort(hp, w * h, sizeof(*hp), halftone_pixel_compare);
+	qsort(hp, size, sizeof(*hp), halftone_pixel_compare);
 	return halftone_pixel_matrix(hp, w, h, nc);
 }
 

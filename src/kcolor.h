@@ -207,10 +207,9 @@ static inline void kd3_enable_all(kd3_tree* kd3) {
 }
 
 
-typedef unsigned kchist_count_t;
 typedef struct kchistitem {
 	kacolor ka;
-	kchist_count_t count;
+	unsigned count;
 } kchistitem;
 
 typedef struct kchist {
@@ -219,11 +218,12 @@ typedef struct kchist {
 	int capacity;
 } kchist;
 
-void kchist_init(kchist* kch);
-void kchist_cleanup(kchist* kch);
-void kchist_make(kchist* kch, Gif_Stream* gfs, unsigned* ntransp);
-kchistitem* kchist_add(kchist* kch, kcolor color, kchist_count_t count);
-void kchist_compress(kchist* kch);
+kchistitem *
+     kchist_add     ( kchist *, kcolor      , unsigned   );
+void kchist_make    ( kchist *, Gif_Stream *, unsigned * );
+void kchist_init    ( kchist * );
+void kchist_cleanup ( kchist * );
+void kchist_compress( kchist * );
 
 
 typedef struct {
@@ -235,11 +235,11 @@ typedef struct {
 	int nchosen;
 } kcdiversity;
 
-void kcdiversity_init(kcdiversity* div, kchist* kch, int dodither);
-void kcdiversity_cleanup(kcdiversity* div);
-int kcdiversity_find_popular(kcdiversity* div);
-int kcdiversity_find_diverse(kcdiversity* div, double ditherweight);
-int kcdiversity_choose(kcdiversity* div, int chosen, int dodither);
+void kcdiversity_init        ( kcdiversity *, kchist *, int );
+void kcdiversity_cleanup     ( kcdiversity * );
+int  kcdiversity_find_popular( kcdiversity * );
+int  kcdiversity_find_diverse( kcdiversity *, double );
+int  kcdiversity_choose      ( kcdiversity *, int, int );
 
 
 Gif_Colormap* colormap_blend_diversity(kchist* kch, Gt_OutputData* od);

@@ -9,6 +9,7 @@
 
 #include "gifsicle.h"
 #include "kcolor.h"
+#include "unipart.h"
 
 typedef signed int penalty_t;
 
@@ -24,8 +25,6 @@ typedef struct {
 	penalty_t      global_penalty, active_penalty, colormap_penalty;
 	Gif_Disposal   disposal;
 } Gif_OptData;
-
-static penalty_t *permuting_sort_values;
 
 typedef enum {
 	TColorEmpty = 0,
@@ -139,10 +138,8 @@ static void increment_penalties(unsigned char *need, const int count, penalty_t 
  * sort_colormap_permutation_rgb: for canonicalizing local colormaps by
    arranging them in RGB order */
 
-static int colormap_rgb_permutation_sorter(const void *v1, const void *v2)
+static int rgb_sort_cmp(const Gif_Color *col1, const Gif_Color *col2, void *_)
 {
-	const Gif_Color *col1 = (const Gif_Color *)v1;
-	const Gif_Color *col2 = (const Gif_Color *)v2;
 	int value1 = (col1->gfc_red << 16) | (col1->gfc_green << 8) | col1->gfc_blue;
 	int value2 = (col2->gfc_red << 16) | (col2->gfc_green << 8) | col2->gfc_blue;
 	return value1 - value2;
@@ -199,7 +196,7 @@ static unsigned char *prepare_colormap_for(
 				col[j].pixel = i;
 			}
 		}
-		qsort(col, ncol, sizeof(Gif_Color), colormap_rgb_permutation_sorter);
+		qSortPerm(Gif_Color, col, ncol, rgb_sort_cmp, NULL);
 
 		for (i = 0; i < ncol; i++)
 			map[col[i].pixel] = i;

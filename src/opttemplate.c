@@ -16,41 +16,26 @@
    broken because I switched to uint32_t's for the sorting values without
    considering the consequences; and the consequences were bad. */
 
-static int _Ex_(permuting_sorter_up)(const void *v1, const void *v2) {
-	const UINT_t *n1 = (const UINT_t *)v1;
-	const UINT_t *n2 = (const UINT_t *)v2;
-	if (permuting_sort_values[*n1] < permuting_sort_values[*n2])
-		return -1;
-	else if (permuting_sort_values[*n1] == permuting_sort_values[*n2])
-		return 0;
-	else
-		return 1;
+static int _Ex_(cmp_sort_up)(
+	const UINT_t *v1,
+	const UINT_t *v2,
+	penalty_t    *pval
+) {
+	penalty_t pe1 = pval[*v1], pe2 = pval[*v2];
+	return (
+		pe1 < pe2 ? -1 : pe1 == pe2 ? 0 : 1
+	);
 }
 
-static int _Ex_(permuting_sorter_down)(const void *v1, const void *v2) {
-	const UINT_t *n1 = (const UINT_t *)v1;
-	const UINT_t *n2 = (const UINT_t *)v2;
-	if (permuting_sort_values[*n1] > permuting_sort_values[*n2])
-		return -1;
-	else if (permuting_sort_values[*n1] == permuting_sort_values[*n2])
-		return 0;
-	else
-		return 1;
-}
-
-static UINT_t *
-_Ex_(sort_permutation)(UINT_t *perm, int size, penalty_t *values, bool is_down) {
-	permuting_sort_values = values;
-	qsort(perm, size, sizeof(UINT_t), is_down ? _Ex_(permuting_sorter_down) : _Ex_(permuting_sorter_up));
-	permuting_sort_values = NULL;
-	return perm;
-}
-
-void _Ex_(swap_arrays)(UINT_t *ptr_1, UINT_t *ptr_2)
-{
-	UINT_t *t_ptr = ptr_1;
-	        ptr_1 = ptr_2;
-	        ptr_2 = t_ptr;
+static int _Ex_(cmp_sort_down)(
+	const UINT_t *v1,
+	const UINT_t *v2,
+	penalty_t    *pval
+) {
+	penalty_t pe1 = pval[*v1], pe2 = pval[*v2];
+	return (
+		pe1 > pe2 ? -1 : pe1 == pe2 ? 0 : 1
+	);
 }
 
 
@@ -447,7 +432,7 @@ static Gif_OptData **_Ex_(make_opt_samples)(
 
 		/* set this_data equal to the current image */
 		if (is_next_data_valid) {
-			_Ex_(swap_arrays)(this_data, next_data);
+			_SWAP_PTR(UINT_t, this_data, next_data);
 			is_next_data_valid = false;
 		} else
 			_Ex_(apply_frame)(gfs->global, gfs, gfi, this_data, false, save_uncompressed);
@@ -518,7 +503,7 @@ retry_frame:
 		if (last_disp == GD_Background)
 			_Ex_(erase_data_area)(get_safe_bounds(gfs->images[i - 1], max_w, max_h), this_data);
 		else if (last_disp == GD_Previous)
-			_Ex_(swap_arrays)(prev_data, this_data);
+			_SWAP_PTR(UINT_t, prev_data, this_data);
 
 		last_disp = disp;
 	}
@@ -565,23 +550,19 @@ static Gif_Colormap *_Ex_(make_opt_colormap)(
 
 	assert(all_ncol <= 0x7FFFFFFF);
 
-	/* initial permutation is null */
-	for (c = 0; c < all_ncol - 1; c++)
+	/* set initial penalties and permutation for each color */
+	for (c = 0; c < all_ncol; c++) {
+		penalty[c] = 0;
 		permute[c] = c + 1;
-
+	}
+	permute[all_ncol - 1] = 0;
 	/* choose appropriate penalties for each image */
 	for (i = 0; i < gfs->nimages; i++) {
-		opt[i]->global_penalty = opt[i]->colormap_penalty = 1;
-		for (UINT_t pi = 2; pi < opt[i]->required_color_count; pi *= 2)
-			opt[i]->colormap_penalty *= 3;
-		opt[i]->active_penalty = (all_ncol > 257 ? opt[i]->colormap_penalty : opt[i]->global_penalty);
-	}
-
-	/* set initial penalties for each color */
-	for (c = 1; c < all_ncol; c++)
-		penalty[c] = 0;
-
-	for (i = 0; i < gfs->nimages; i++) {
+		penalty_t cm_pen = (opt[i]->global_penalty = 1);
+		for (unsigned pi = 2; pi < opt[i]->required_color_count; pi *= 2)
+			cm_pen *= 3;
+		opt[i]->colormap_penalty = cm_pen;
+		opt[i]->active_penalty   = (all_ncol > 257 ? cm_pen : 1);
 		increment_penalties(opt[i]->needed_colors, all_ncol, penalty, opt[i]->active_penalty);
 	}
 
@@ -591,7 +572,7 @@ static Gif_Colormap *_Ex_(make_opt_colormap)(
 
 		/* sort permutation based on penalty */
 		if (permutation_changed)
-			_Ex_(sort_permutation)(permute, cur_ncol, penalty, true);
+			qSortPerm(UINT_t, permute, cur_ncol, _Ex_(cmp_sort_down), penalty);
 		permutation_changed = false;
 
 		/* update reverse permutation */

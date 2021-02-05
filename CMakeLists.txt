@@ -67,6 +67,7 @@ add_library(libgifsi ${gifsi_library_type}
   src/gifread.c
   src/gifunopt.c
   src/gifwrite.c
+  src/unipart.c
 )
 set_target_properties(libgifsi PROPERTIES
   OUTPUT_NAME gifsi

@@ -67,6 +67,7 @@ add_library(libgifsi ${gifsi_library_type}
   src/gifread.c
   src/gifunopt.c
   src/gifwrite.c
+  src/optimize.c
   src/unipart.c
 )
 set_target_properties(libgifsi PROPERTIES
@@ -95,7 +96,6 @@ if(BUILD_GIFSICLE)
     src/clp.c
     src/gifsicle.c
     src/merge.c
-    src/optimize.c
     src/quantize.c
     src/support.c
     src/xform.c

@@ -483,7 +483,8 @@ retry_frame:
 					goto retry_frame;
 				}
 			}
-			fatal_error("%d colors required in a frame (256 is max)", subimage->required_color_count);
+			printf("%d colors required in a frame (256 is max)", subimage->required_color_count);
+			__assert_fail("libgifsi: error colors in source", __FILE__, __LINE__, __ASSERT_FUNCTION);
 		}
 		opt_data[i] = subimage;
 

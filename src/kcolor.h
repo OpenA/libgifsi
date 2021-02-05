@@ -39,48 +39,42 @@ typedef union kacolor {
 #endif
 } kacolor;
 
-/* gamma_tables[0]: array of 256 gamma-conversion values
-   gamma_tables[1]: array of 256 reverse gamma-conversion values */
-extern unsigned short* gamma_tables[2];
-
-/* set `*kc` to the gamma transformation of `a0/a1/a2` [RGB] */
-static inline void kc_set8g(kcolor* kc, int a0, int a1, int a2) {
-	kc->a[0] = gamma_tables[0][a0];
-	kc->a[1] = gamma_tables[0][a1];
-	kc->a[2] = gamma_tables[0][a2];
-}
-
-/* return the gamma transformation of `a0/a1/a2` [RGB] */
-static inline kcolor kc_make8g(int a0, int a1, int a2) {
+/* set `*kc` to the gamma transformation of `r/g/b` [RGB] */
+static inline kcolor kc_New(short r, short g, short b) {
 	kcolor kc;
-	kc_set8g(&kc, a0, a1, a2);
+	kc.a[0] = r; kc.a[1] = g; kc.a[2] = b;
 	return kc;
 }
+
+/* return the gamma transformation of `r/g/b` [RGB] */
+#define kc_Make8g(tab,r,g,b) kc_New(tab[r], tab[g], tab[b])
 
 /* return the gamma transformation of `*gfc` */
-static inline kcolor kc_makegfcg(const Gif_Color* gfc) {
-	return kc_make8g(gfc->gfc_red, gfc->gfc_green, gfc->gfc_blue);
-}
+#define kc_Make8g_gfc(tab, gfc) kc_New(\
+	tab[(gfc)->gfc_red],\
+	tab[(gfc)->gfc_green],\
+	tab[(gfc)->gfc_blue])
 
-/* return the uncorrected representation of `a0/a1/a2` [RGB] */
-static inline kcolor kc_make8ng(int a0, int a1, int a2) {
-	kcolor kc;
-	kc.a[0] = (a0 << 7) + (a0 >> 1);
-	kc.a[1] = (a1 << 7) + (a1 >> 1);
-	kc.a[2] = (a2 << 7) + (a2 >> 1);
-	return kc;
-}
+/* return the uncorrected representation of `r/g/b` [RGB] */
+#define kc_Make8ng(r,g,b) kc_New(\
+	(r << 7) + (r >> 1),\
+	(g << 7) + (g >> 1),\
+	(b << 7) + (b >> 1))
 
 /* return the kcolor representation of `*gfc` (no gamma transformation) */
-static inline kcolor kc_makegfcng(const Gif_Color* gfc) {
-	return kc_make8ng(gfc->gfc_red, gfc->gfc_green, gfc->gfc_blue);
-}
+#define kc_Make8ng_gfc(gfc) kc_Make8ng(\
+	(gfc)->gfc_red,\
+	(gfc)->gfc_green,\
+	(gfc)->gfc_blue)
 
 /* return transparency */
-static inline kacolor kac_transparent() {
-	kacolor x;
-	x.a[0] = x.a[1] = x.a[2] = x.a[3] = 0;
-	return x;
+#define kc_Clear(kc) (kc.a[0] = kc.a[1] = kc.a[2] = kc.a[3] = 0)
+
+static inline kacolor kac_New(short r, short g, short b, short a) {
+	kacolor kac;
+	kac.a[0] = r; kac.a[1] = g;
+	kac.a[2] = b; kac.a[3] = a;
+	return kac;
 }
 
 /* return a hex color string definition for `x` */
@@ -135,11 +129,6 @@ static inline void kc_luminance_transform(kcolor* x) {
 typedef struct wkcolor {
 	int a[3];
 } wkcolor;
-
-static inline void wkc_clear(wkcolor* x) {
-	x->a[0] = x->a[1] = x->a[2] = 0;
-}
-
 
 /* kd3_tree: kd-tree for 3 dimensions, indexing kcolors */
 typedef struct kd3_tree kd3_tree;
@@ -240,11 +229,6 @@ void kcdiversity_cleanup     ( kcdiversity * );
 int  kcdiversity_find_popular( kcdiversity * );
 int  kcdiversity_find_diverse( kcdiversity *, double );
 int  kcdiversity_choose      ( kcdiversity *, int, int );
-
-
-Gif_Colormap* colormap_blend_diversity(kchist* kch, Gt_OutputData* od);
-Gif_Colormap* colormap_flat_diversity(kchist* kch, Gt_OutputData* od);
-Gif_Colormap* colormap_median_cut(kchist* kch, Gt_OutputData* od);
 
 
 #if HAVE_SIMD && HAVE_VECTOR_SIZE_VECTOR_TYPES

@@ -10,7 +10,6 @@
 
 #include <config.h>
 #include "gifsicle.h"
-#include "kcolor.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>

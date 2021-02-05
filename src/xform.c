@@ -394,7 +394,7 @@ static void kcscreen_init(kcscreen* kcs, Gif_Stream* gfs, int sw, int sh) {
     kcs->data = Gif_NewArray(kacolor, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcs->bg.k = kc_makegfcg(&gfs->global->col[gfs->background]);
+        kcs->bg.k = kc_Make8g_gfc(gamma_tables[0], &gfs->global->col[gfs->background]);
         kcs->bg.a[3] = KC_MAX;
     } else
         kcs->bg.a[0] = kcs->bg.a[1] = kcs->bg.a[2] = kcs->bg.a[3] = 0;
@@ -480,7 +480,7 @@ static void ksscreen_init(ksscreen* kss, Gif_Stream* gfs, int sw, int sh) {
     kss->data = Gif_NewArray(scale_color, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcolor k = kc_makegfcg(&gfs->global->col[gfs->background]);
+        kcolor k = kc_Make8g_gfc(gamma_tables[0], &gfs->global->col[gfs->background]);
         kss->bg = sc_makekc(&k);
     } else
         sc_clear(&kss->bg);
@@ -680,7 +680,7 @@ static void scale_image_output_row(scale_context* sctx, scale_color* sc,
 
     for (xo = 0; xo != gfo->width; ++xo)
         if (sc[xo].a[3] <= (int) (KC_MAX / 4))
-            oscr[xo] = kac_transparent();
+            oscr[xo] = kac_New(0,0,0,0);
         else {
             /* don't effectively mix partially transparent pixels with black */
             if (sc[xo].a[3] <= (int) (KC_MAX * 31 / 32))
@@ -710,7 +710,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
                 kchist_add(&kch, xscr[xo].k, 1);
     }
     for (i = 0; i != gfcm->ncol; ++i)
-        kchist_add(&kch, kc_makegfcg(&gfcm->col[i]), (unsigned)-1);
+        kchist_add(&kch, kc_Make8g_gfc(gamma_tables[0], &gfcm->col[i]), (unsigned)-1);
     kchist_compress(&kch);
 
     kcdiversity_init(&div, &kch, 0);

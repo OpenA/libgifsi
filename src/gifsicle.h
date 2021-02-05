@@ -264,6 +264,16 @@ void    resize_stream(Gif_Stream* gfs, double new_width, double new_height,
 /*****
  * quantization
  **/
+#include "kcolor.h"
+
+/* gamma_tables[0]: array of 256 gamma-conversion values
+   gamma_tables[1]: array of 256 reverse gamma-conversion values */
+extern unsigned short* gamma_tables[2];
+
+Gif_Colormap* colormap_blend_diversity(kchist* kch, Gt_OutputData* od);
+Gif_Colormap* colormap_flat_diversity(kchist* kch, Gt_OutputData* od);
+Gif_Colormap* colormap_median_cut(kchist* kch, Gt_OutputData* od);
+
 #define KC_GAMMA_SRGB                   0
 #define KC_GAMMA_NUMERIC                1
 void    kc_set_gamma(int type, double gamma);

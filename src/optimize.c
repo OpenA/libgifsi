@@ -7,7 +7,7 @@
    as this notice is kept intact and this source code is made available. There
    is no warranty, express or implied. */
 
-#include "gifsicle.h"
+#include <gifsi.h>
 #include "kcolor.h"
 #include "unipart.h"
 
@@ -60,7 +60,7 @@ static void colormap_add(const Gif_Colormap *src, Gif_Colormap *dst, kchist *cm_
 		Gif_ReArray(dst->col, Gif_Color, dst->capacity);
 	}
 	for (int i = 0; i < src->ncol; i++) {
-		kchistitem* khi = kchist_add(cm_hist, kc_makegfcng(&src->col[i]), 0);
+		kchistitem* khi = kchist_add(cm_hist, kc_Make8ng_gfc(&src->col[i]), 0);
 
 		if (!khi->count) {
 			int j = (khi->count = dst->ncol);

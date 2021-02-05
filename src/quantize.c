@@ -88,23 +88,20 @@ void kc_revgamma_transform(kcolor *x)
 
 #if 0
 static void kc_test_gamma() {
-    int x, y, z;
-    for (x = 0; x != 256; ++x)
-        for (y = 0; y != 256; ++y)
-            for (z = 0; z != 256; ++z) {
-                kcolor k;
-                kc_set8g(&k, x, y, z);
-                kc_revgamma_transform(&k);
-                if ((k.a[0] >> 7) != x || (k.a[1] >> 7) != y
-                    || (k.a[2] >> 7) != z) {
-                    kcolor kg;
-                    kc_set8g(&kg, x, y, z);
-                    fprintf(stderr, "#%02X%02X%02X ->g #%04X%04X%04X ->revg #%02X%02X%02X!\n",
-                            x, y, z, kg.a[0], kg.a[1], kg.a[2],
-                            k.a[0] >> 7, k.a[1] >> 7, k.a[2] >> 7);
-                    assert(0);
-                }
-            }
+	short x, y, z;
+	for (x = 0; x < 256; x++)
+		for (y = 0; y < 256; y++)
+			for (z = 0; z < 256; z++) {
+				kcolor k = kc_Make8g(gamma_tables[0], x, y, z);
+				kc_revgamma_transform(&k);
+				if ((k.a[0] >> 7) != x || (k.a[1] >> 7) != y || (k.a[2] >> 7) != z) {
+					kcolor kg = kc_Make8g(gamma_tables[0], x, y, z);
+					fprintf(stderr, "#%02X%02X%02X ->g #%04X%04X%04X ->revg #%02X%02X%02X!\n",
+							x, y, z, kg.a[0], kg.a[1], kg.a[2],
+							k.a[0] >> 7, k.a[1] >> 7, k.a[2] >> 7);
+					assert(0);
+				}
+			}
 }
 #endif
 
@@ -244,7 +241,7 @@ void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 			Gif_Colormap *cm = gfi->local;
 			for (c = 0; c < cm->ncol; c++) {
 				if (count[c] && c != transp)
-					kchist_add(kch, kc_makegfcg(&cm->col[c]), count[c]);
+					kchist_add(kch, kc_Make8g_gfc(gamma_tables[0], &cm->col[c]), count[c]);
 			}
 		}
 		if (transp >= 0 && count[transp] != prev_transp_cnt) {
@@ -271,7 +268,7 @@ void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 	if (gcm) {
 		for (c = 0; c < gcm->ncol; c++) {
 			if (gcount[c])
-				kchist_add(kch, kc_makegfcg(&gcm->col[c]), gcount[c]);
+				kchist_add(kch, kc_Make8g_gfc(gamma_tables[0], &gcm->col[c]), gcount[c]);
 		}
 	}
 	/* now, make the linear histogram from the hashed histogram */
@@ -706,8 +703,7 @@ void kd3_add_transformed(kd3_tree *kd3, const kcolor *k)
 
 void kd3_add8g(kd3_tree *kd3, int a0, int a1, int a2)
 {
-	kcolor k;
-	kc_set8g(&k, a0, a1, a2);
+	kcolor k = kc_Make8g(gamma_tables[0], a0, a1, a2);
 	if (kd3->transform)
 		kd3->transform(&k);
 	kd3_add_transformed(kd3, &k);
@@ -969,8 +965,7 @@ int kd3_closest_transformed(kd3_tree *kd3, const kcolor *k, unsigned *dist_store
 
 int kd3_closest8g(kd3_tree *kd3, int a0, int a1, int a2)
 {
-	kcolor k;
-	kc_set8g(&k, a0, a1, a2);
+	kcolor k = kc_Make8g(gamma_tables[0], a0, a1, a2);
 	if (kd3->transform)
 		kd3->transform(&k);
 	return kd3_closest_transformed(kd3, &k, NULL);
@@ -1076,15 +1071,18 @@ void colormap_image_floyd_steinberg(Gif_Image *gfi, unsigned char *all_new_data,
 		/* Do a single row */
 		while (x >= 0 && x < width) {
 			int e;
-			kcolor use;
 
 			/* the transparent color never gets adjusted */
 			if (*data == transparent)
 				goto next;
 
 			/* find desired new color */
-			kc_set8g(&use, old_cm->col[*data].gfc_red, old_cm->col[*data].gfc_green,
-					 old_cm->col[*data].gfc_blue);
+			Gif_Color old_c = old_cm->col[*data];
+			kcolor use = kc_Make8g(gamma_tables[0],
+				old_c.gfc_red,
+				old_c.gfc_green,
+				old_c.gfc_blue
+			);
 			if (kd3->transform)
 				kd3->transform(&use);
 			/* use Floyd-Steinberg errors to adjust */
@@ -1092,7 +1090,7 @@ void colormap_image_floyd_steinberg(Gif_Image *gfi, unsigned char *all_new_data,
 				int v = use.a[k] + (err[x + 1].a[k] & ~(DITHER_ITEM2ERR - 1)) / DITHER_ITEM2ERR;
 				use.a[k] = KC_CLAMPV(v);
 			}
-			e = old_cm->col[*data].pixel;
+			e = old_c.pixel;
 			if (kc_distance(&kd3->ks[e], &use) < kd3->xradius[e])
 				*new_data = e;
 			else
@@ -1317,15 +1315,18 @@ static void limit_ordered_dither_plan(unsigned char *plan, int nplan, int nc,
 static void set_ordered_dither_plan(unsigned char *plan, int nplan, int nc,
 									Gif_Color *gfc, kd3_tree *kd3)
 {
-	kcolor want, cur;
 	wkcolor err;
 	int i, d;
 
-	kc_set8g(&want, gfc->gfc_red, gfc->gfc_green, gfc->gfc_blue);
+	kcolor cur, want = kc_Make8g(gamma_tables[0],
+		gfc->gfc_red,
+		gfc->gfc_green,
+		gfc->gfc_blue
+	);
 	if (kd3->transform)
 		kd3->transform(&want);
 
-	wkc_clear(&err);
+	kc_Clear(err);
 	for (i = 0; i < nplan; i++) {
 		for (d = 0; d != 3; ++d) {
 			int v = want.a[d] + err.a[d];

@@ -5,6 +5,14 @@
 #ifndef UNIPART_H
 #define UNIPART_H
 
+#ifndef UINT32_MAX
+# define UINT32_MAX 0xFFFFFFFFU
+# define UINT16_MAX 0xFFFFU
+#endif
+
+#define _MIN(a, b) ((a) < (b) ? (a) : (b))
+#define _MAX(a, b) ((a) > (b) ? (a) : (b))
+
 typedef int(*_scmp_fn)(const void*, const void*, void*);
 
 void __qsort_r(void*, unsigned, unsigned, _scmp_fn, void*);

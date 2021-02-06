@@ -9,7 +9,6 @@
 
 #include <gifsi.h>
 #include "kcolor.h"
-#include "unipart.h"
 
 typedef signed int penalty_t;
 

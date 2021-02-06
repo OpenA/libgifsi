@@ -38,7 +38,6 @@
 #define GIF_MAX_BLOCK         0xFF
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
-#define GIF_MAX_VALUE_UINT    0xFFFFFFFF
 
 enum Gif_Disposal {
 	GD_None = 0,

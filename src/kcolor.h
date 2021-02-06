@@ -11,6 +11,7 @@
 #define KCOLOR_H
 #include <gifsi.h>
 #include <assert.h>
+#include "unipart.h"
 
 /* kcolor: a 3D vector, each component has 15 bits of precision
    15 bits means KC_MAX * KC_MAX always fits within a signed 32-bit
@@ -25,9 +26,6 @@
 typedef struct kcolor {
 	short a[3];
 } kcolor;
-
-#define _MIN(a, b) ((a) < (b) ? (a) : (b))
-#define _MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #define KC_CLAMPV(v) (_MAX(0, _MIN((v), KC_MAX)))
 

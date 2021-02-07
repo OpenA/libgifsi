@@ -55,94 +55,92 @@ typedef struct Gif_CodeTable {
 } Gif_CodeTable;
 
 struct Gif_Writer {
-	FILE *f;
-	unsigned char *v;
+
+	FILE *file;
+
+	unsigned char *data;
 	unsigned int pos, cap;
-	Gif_CompressInfo gcinfo;
+
 	unsigned global_size, local_size;
 	bool errors, cleared;
+
 	Gif_CodeTable code_table;
-	void (*byte_putter) (const unsigned char ,         struct Gif_Writer *);
-	void (*block_putter)(const unsigned char*, size_t, struct Gif_Writer *);
+	Gif_CompressInfo gcinfo;
+
+	void (*Write_byte )(struct Gif_Writer*,       unsigned char );
+	void (*Write_chunk)(struct Gif_Writer*, const unsigned char*, unsigned );
 };
 
-#define gifputbyte(b, grr)      ((*grr->byte_putter)(b, grr))
-#define gifputblock(b, l, grr)  ((*grr->block_putter)(b, l, grr))
-
-static inline void
-gifputunsigned(unsigned short uns, Gif_Writer *grr)
-{
-	gifputbyte(uns & 0xFF, grr);
-	gifputbyte(uns >> 8, grr);
-}
-
+#define writeChar(c, grr)     (*grr->Write_byte )(grr, c)
+#define writeUint8(u, grr)    (*grr->Write_byte )(grr, (unsigned char)u)
+#define writeUint16(u, grr)   (*grr->Write_byte )(grr, u & 0xFF), (*grr->Write_byte)(grr, u >> 8)
+#define writeChunk(buf,l,grr) (*grr->Write_chunk)(grr, buf, l)
+#define writeString(str,l,grr)(*grr->Write_chunk)(grr, (const unsigned char *)str, l)
 
 static void
-file_byte_putter(unsigned char b, Gif_Writer *grr)
+write_file_byte(Gif_Writer *grr, unsigned char c)
 {
-	fputc(b, grr->f);
+	fputc(c, grr->file);
 }
 
 static void
-file_block_putter(const unsigned char *block, size_t size, Gif_Writer *grr)
+write_file_chunk(Gif_Writer *grr, const unsigned char *chunk, unsigned len)
 {
-	grr->errors = fwrite(block, 1, size, grr->f) != size;
+	grr->errors = fwrite(chunk, 1, len, grr->file) != len;
 }
 
-
 static void
-memory_byte_putter(unsigned char b, Gif_Writer *grr)
+write_data_byte(Gif_Writer *grr, unsigned char c)
 {
 	if (grr->pos >= grr->cap) {
 		grr->cap = (grr->cap ? grr->cap * 2 : 1024);
-		Gif_ReArray(grr->v, unsigned char, grr->cap);
+		Gif_ReArray(grr->data, unsigned char, grr->cap);
 	}
-	if (grr->v)
-		grr->v[grr->pos++] = b;
+	if (grr->data)
+		grr->data[grr->pos++] = c;
 }
 
 static void
-memory_block_putter(const unsigned char *data, size_t len, Gif_Writer *grr)
+write_data_chunk(Gif_Writer *grr, const unsigned char *data, unsigned len)
 {
 	while (grr->pos + len >= grr->cap) {
 		grr->cap = (grr->cap ? grr->cap * 2 : 1024);
-		Gif_ReArray(grr->v, unsigned char, grr->cap);
+		Gif_ReArray(grr->data, unsigned char, grr->cap);
 	}
-	if (grr->v) {
-		memcpy(grr->v + grr->pos, data, len);
+	if (grr->data) {
+		memcpy(grr->data + grr->pos, data, len);
 		grr->pos += len;
 	}
 }
 
 
-static int
+static bool
 gif_writer_init(Gif_Writer* grr, FILE* f, const Gif_CompressInfo* gcinfo)
 {
-	grr->f = f;
-	grr->v = NULL;
-	grr->pos = grr->cap = 0;
+	grr->file = f;
+	grr->data = NULL;
+
+	grr->pos    = grr->cap     = 0;
+	grr->errors = grr->cleared = false;
+
 	if (gcinfo)
 		grr->gcinfo = *gcinfo;
 	else
 		Gif_InitCompressInfo(&grr->gcinfo);
-	grr->errors = false;
-	grr->cleared = false;
-	grr->code_table.nodes = Gif_NewArray(Gif_Node, NODES_SIZE);
-	grr->code_table.links = Gif_NewArray(Gif_Node*, LINKS_SIZE);
-	if (f) {
-		grr->byte_putter = file_byte_putter;
-		grr->block_putter = file_block_putter;
-	} else {
-		grr->byte_putter = memory_byte_putter;
-		grr->block_putter = memory_block_putter;
-	}
-	return grr->code_table.nodes && grr->code_table.links;
+
+	grr->Write_byte  = f ? write_file_byte  : write_data_byte;
+	grr->Write_chunk = f ? write_file_chunk : write_data_chunk;
+
+	return (
+		(grr->code_table.nodes = Gif_NewArray(Gif_Node , NODES_SIZE)) &&
+		(grr->code_table.links = Gif_NewArray(Gif_Node*, LINKS_SIZE))
+	);
 }
 
 static void
 gif_writer_cleanup(Gif_Writer* grr)
 {
-	Gif_DeleteArray(grr->v);
+	Gif_DeleteArray(grr->data);
 	Gif_DeleteArray(grr->code_table.nodes);
 	Gif_DeleteArray(grr->code_table.links);
 }
@@ -151,14 +149,13 @@ gif_writer_cleanup(Gif_Writer* grr)
 static inline void
 gfc_clear(Gif_CodeTable *gfc, Gif_Code clear_code)
 {
-	int c;
 	/* The first clear_code nodes are reserved for single-pixel codes */
-	gfc->nodes_pos = clear_code;
-	gfc->links_pos = 0;
-	for (c = 0; c < clear_code; c++) {
-		gfc->nodes[c].code = c;
-		gfc->nodes[c].type = LINKS_TYPE;
-		gfc->nodes[c].suffix = c;
+	gfc->nodes_pos  = clear_code;
+	gfc->links_pos  = 0;
+	for (Gif_Code c = 0; c < clear_code; c++) {
+		gfc->nodes[c].code    = c;
+		gfc->nodes[c].type    = LINKS_TYPE;
+		gfc->nodes[c].suffix  = c;
 		gfc->nodes[c].child.s = 0;
 	}
 	gfc->clear_code = clear_code;
@@ -408,7 +405,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	int cur_code_bits;
 
 	/* Here we go! */
-	gifputbyte(min_code_bits, grr);
+	writeUint8(min_code_bits, grr);
 #define CLEAR_CODE      ((Gif_Code) (1 << min_code_bits))
 #define EOI_CODE        ((Gif_Code) (CLEAR_CODE + 1))
 #define CUR_BUMP_CODE   (1 << cur_code_bits)
@@ -590,7 +587,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	bufpos = (bufpos + 7) >> 3;
 	buf[(bufpos - 1) & 0xFFFFFF00] = (bufpos - 1) & 0xFF;
 	buf[bufpos] = 0;
-	gifputblock(buf, bufpos + 1, grr);
+	writeChunk(buf, bufpos + 1, grr);
 
 	if (buf != stack_buffer)
 		Gif_DeleteArray(buf);
@@ -649,9 +646,9 @@ save_compression_result(Gif_Image *gfi, Gif_Writer *grr, int ok)
 		if (ok) {
 			gfi->compressed_len = grr->pos;
 			gfi->compressed_errors = 0;
-			gfi->compressed = grr->v;
+			gfi->compressed = grr->data;
 			gfi->free_compressed = Gif_Free;
-			grr->v = NULL;
+			grr->data = NULL;
 			grr->cap = 0;
 		} else
 			gfi->compressed = NULL;
@@ -733,15 +730,15 @@ write_color_table(Gif_Colormap *gfcm, int totalcol, Gif_Writer *grr)
 	int i, limit = _MIN(gfcm->ncol, totalcol);
 
 	for (i = 0; i < limit; i++) {
-		gifputbyte(c[i].gfc_red  , grr);
-		gifputbyte(c[i].gfc_green, grr);
-		gifputbyte(c[i].gfc_blue , grr);
+		writeUint8(c[i].gfc_red  , grr);
+		writeUint8(c[i].gfc_green, grr);
+		writeUint8(c[i].gfc_blue , grr);
 	}
 	/* Pad out colormap with black. */
 	for (; i < totalcol; i++) {
-		gifputbyte(0, grr);
-		gifputbyte(0, grr);
-		gifputbyte(0, grr);
+		writeUint8(0, grr);
+		writeUint8(0, grr);
+		writeUint8(0, grr);
 	}
 }
 
@@ -752,11 +749,11 @@ write_image(Gif_Stream *gfs, Gif_Image *gfi, Gif_Writer *grr)
 	unsigned char min_code_bits, packed = 0;
 	grr->local_size = get_color_table_size(gfs, gfi, grr);
 
-	gifputbyte(',', grr);
-	gifputunsigned(gfi->left, grr);
-	gifputunsigned(gfi->top, grr);
-	gifputunsigned(gfi->width, grr);
-	gifputunsigned(gfi->height, grr);
+	writeChar  (','        , grr);
+	writeUint16(gfi->left  , grr);
+	writeUint16(gfi->top   , grr);
+	writeUint16(gfi->width , grr);
+	writeUint16(gfi->height, grr);
 
 	if (grr->local_size > 0) {
 		int size = 2;
@@ -767,7 +764,7 @@ write_image(Gif_Stream *gfs, Gif_Image *gfi, Gif_Writer *grr)
 
 	if (gfi->interlace)
 		packed |= 0x40;
-	gifputbyte(packed, grr);
+	writeUint8(packed, grr);
 
 	if (grr->local_size > 0)
 		write_color_table(gfi->local, grr->local_size, grr);
@@ -786,7 +783,7 @@ write_image(Gif_Stream *gfs, Gif_Image *gfi, Gif_Writer *grr)
 		unsigned compressed_len = gfi->compressed_len;
 		while (compressed_len > 0) {
 			unsigned short amt = _MIN(compressed_len, 0x7000);
-			gifputblock(compressed, amt, grr);
+			writeChunk(compressed, amt, grr);
 			compressed += amt;
 			compressed_len -= amt;
 		}
@@ -810,18 +807,17 @@ write_logical_screen_descriptor(Gif_Stream *gfs, Gif_Writer *grr)
 	unsigned i, g_size = (grr->global_size = get_color_table_size(gfs, 0, grr));
 
 	Gif_CalculateScreenSize(gfs, 0);
-	gifputunsigned(gfs->screen_width, grr);
-	gifputunsigned(gfs->screen_height, grr);
+	writeUint16(gfs->screen_width , grr);
+	writeUint16(gfs->screen_height, grr);
 
 	if (g_size > 0) {
 		packed |= 0x80;
 		for (i = 2; i < g_size; i *= 2)
 			packed++;
 	}
-
-	gifputbyte(packed, grr);
-	gifputbyte(gfs->background < g_size ? gfs->background : 255, grr);
-	gifputbyte(0, grr);/* no aspect ratio information */
+	writeUint8(packed, grr);
+	writeUint8(gfs->background < g_size ? gfs->background : 255, grr);
+	writeUint8(0, grr);/* no aspect ratio information */
 
 	if (g_size > 0)
 		write_color_table(gfs->global, g_size, grr);
@@ -840,16 +836,17 @@ static void
 write_graphic_control_extension(Gif_Image *gfi, Gif_Writer *grr)
 {
 	unsigned char packed = 0;
-	gifputbyte('!' , grr);
-	gifputbyte(0xF9, grr);
-	gifputbyte(0x04, grr);
-	if (gfi->transparent >= 0)
+	short transp = gfi->transparent;
+	writeChar  ('!' , grr);
+	writeUint8 (0xF9, grr);
+	writeUint8 (0x04, grr);
+	if (transp >= 0)
 		packed |= 0x01;
-	packed |= (gfi->disposal & 0x07) << 2;
-	gifputbyte(packed, grr);
-	gifputunsigned(gfi->delay, grr);
-	gifputbyte((unsigned char)gfi->transparent, grr);
-	gifputbyte(0, grr);
+	packed |=  (gfi->disposal & 0x07) << 2;
+	writeUint8 (packed    , grr);
+	writeUint16(gfi->delay, grr);
+	writeUint8 (transp    , grr);
+	writeChar  ('\0'      , grr);
 }
 
 
@@ -858,20 +855,20 @@ blast_data(const unsigned char *data, int len, Gif_Writer *grr)
 {
 	while (len > 0) {
 		int s = _MIN(len, 255);
-		gifputbyte(s, grr);
-		gifputblock(data, s, grr);
+		writeUint8(s, grr);
+		writeChunk(data, s, grr);
 		data += s;
 		len  -= s;
 	}
-	gifputbyte(0, grr);
+	writeChar('\0', grr);
 }
 
 
 static void
 write_name_extension(char *id, Gif_Writer *grr)
 {
-	gifputbyte('!', grr);
-	gifputbyte(0xCE, grr);
+	writeChar('!', grr);
+	writeUint8(0xCE, grr);
 	blast_data((unsigned char *)id, strlen(id), grr);
 }
 
@@ -880,8 +877,8 @@ static void
 write_comment_extensions(Gif_Comment *gfcom, Gif_Writer *grr)
 {
 	for (int i = 0; i < gfcom->count; i++) {
-		gifputbyte('!', grr);
-		gifputbyte(0xFE, grr);
+		writeChar('!', grr);
+		writeUint8(0xFE, grr);
 		blast_data((const unsigned char *)gfcom->str[i], gfcom->len[i], grr);
 	}
 }
@@ -890,9 +887,9 @@ write_comment_extensions(Gif_Comment *gfcom, Gif_Writer *grr)
 static void
 write_netscape_loop_extension(unsigned short value, Gif_Writer *grr)
 {
-	gifputblock((const unsigned char *)"!\xFF\x0BNETSCAPE2.0\x03\x01", 16, grr);
-	gifputunsigned(value, grr);
-	gifputbyte(0, grr);
+	writeString("!\xFF\x0BNETSCAPE2.0\x03\x01", 16, grr);
+	writeUint16(value, grr);
+	writeChar('\0', grr);
 }
 
 
@@ -902,29 +899,29 @@ write_generic_extension(Gif_Extension *gfex, Gif_Writer *grr)
 	unsigned pos = 0;
 	if (gfex->kind < 0) return;   /* ignore our private extensions */
 
-	gifputbyte('!', grr);
-	gifputbyte(gfex->kind, grr);
+	writeChar('!', grr);
+	writeUint8(gfex->kind, grr);
 	if (gfex->kind == 255) {      /* an application extension */
 		if (gfex->applength) {
-			gifputbyte(gfex->applength, grr);
-			gifputblock((const unsigned char*)gfex->appname, gfex->applength, grr);
+			writeUint8(gfex->applength, grr);
+			writeString(gfex->appname, gfex->applength, grr);
 		}
 	}
 	if (gfex->packetized)
-		gifputblock(gfex->data, gfex->length, grr);
+		writeChunk(gfex->data, gfex->length, grr);
 	else {
 		while (pos + 255 < gfex->length) {
-			gifputbyte(255, grr);
-			gifputblock(gfex->data + pos, 255, grr);
+			writeUint8(255, grr);
+			writeChunk(gfex->data + pos, 255, grr);
 			pos += 255;
 		}
 		if (pos < gfex->length) {
 			unsigned len = gfex->length - pos;
-			gifputbyte(len, grr);
-			gifputblock(gfex->data + pos, len, grr);
+			writeUint8(len, grr);
+			writeChunk(gfex->data + pos, len, grr);
 		}
 	}
-	gifputbyte(0, grr);
+	writeChar('\0', grr);
 }
 
 static int
@@ -946,7 +943,7 @@ write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 			}
 		}
 	}
-	gifputblock((const unsigned char *)(isgif89a ? "GIF89a" : "GIF87a"), 6, grr);
+	writeChunk((const unsigned char *)(isgif89a ? "GIF89a" : "GIF87a"), 6, grr);
 
 	write_logical_screen_descriptor(gfs, grr);
 
@@ -962,7 +959,7 @@ write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 	if (gfs->end_comment)
 		write_comment_extensions(gfs->end_comment, grr);
 
-	gifputbyte(';', grr);
+	writeChar(';', grr);
 	ok = true;
 
  done:
@@ -990,7 +987,7 @@ Gif_IncrementalWriteFileInit(Gif_Stream* gfs, const Gif_CompressInfo* gcinfo,
 		Gif_Delete(grr);
 		return NULL;
 	}
-	gifputblock((const unsigned char *)"GIF89a", 6, grr);
+	writeChunk((const unsigned char *)"GIF89a", 6, grr);
 	write_logical_screen_descriptor(gfs, grr);
 	if (gfs->loopcount > -1)
 		write_netscape_loop_extension(gfs->loopcount, grr);
@@ -1020,7 +1017,7 @@ Gif_IncrementalWriteComplete(Gif_Writer* grr, Gif_Stream* gfs)
 		write_generic_extension(gfex, grr);
 	if (gfs->end_comment)
 		write_comment_extensions(gfs->end_comment, grr);
-	gifputbyte(';', grr);
+	writeChar(';', grr);
 	gif_writer_cleanup(grr);
 	Gif_Delete(grr);
 	return 1;

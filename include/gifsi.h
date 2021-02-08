@@ -281,18 +281,14 @@ void        Gif_SetErrorHandler (Gif_ReadErrorHandler);
 Gif_Stream* Gif_FullReadData    (const unsigned char *, unsigned, int, const char *, Gif_ReadErrorHandler);
 
 Gif_Stream* Gif_FullReadFile    (FILE *, int, const char *, Gif_ReadErrorHandler);
-int         Gif_FullWriteFile   (Gif_Stream *, const Gif_CompressInfo *, FILE *);
+bool        Gif_FullWriteFile   (Gif_Stream *, const Gif_CompressInfo *, FILE *);
+bool        Gif_FullWriteData   (Gif_Stream *, const Gif_CompressInfo *, unsigned char *);
 
 #define Gif_ReadData(d,l) Gif_FullReadData (d,l, GIF_READ_UNCOMPRESSED, NULL, NULL)
 #define Gif_ReadFile(f)   Gif_FullReadFile (f,   GIF_READ_UNCOMPRESSED, NULL, NULL)
 
 #define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
 #define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,NULL,f)
-
-typedef struct Gif_Writer Gif_Writer;
-Gif_Writer* Gif_IncrementalWriteFileInit (Gif_Stream* gfs, const Gif_CompressInfo* gcinfo, FILE *f);
-int         Gif_IncrementalWriteImage    (Gif_Writer* grr, Gif_Stream* gfs, Gif_Image* gfi);
-int         Gif_IncrementalWriteComplete (Gif_Writer* grr, Gif_Stream* gfs);
 
 
 /** HOOKS AND MISCELLANEOUS **/

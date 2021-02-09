@@ -981,7 +981,7 @@ write_stream(const char *output_name, Gif_Stream *gfs)
   }
 
   if (f) {
-    Gif_FullWriteFile(gfs, &gif_write_info, f);
+    Gif_FullWriteFile(gfs, f, &gif_write_info);
     fclose(f);
     any_output_successful = 1;
   } else

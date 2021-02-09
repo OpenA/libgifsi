@@ -977,24 +977,36 @@ write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 	return true;
 }
 
-
-bool
-Gif_FullWriteFile(Gif_Stream *gfs, const Gif_CompressInfo *gcinfo,
-                  FILE *file)
-{
+/*
+  interface functions 
+  returns => size of writing file/data
+*/
+unsigned int Gif_FullWriteFile(
+	Gif_Stream       *gfs,
+	FILE             *file,
+	Gif_CompressInfo *gcinfo
+) {
 	Gif_Writer grr;
-	bool ok = (gif_writer_init(&grr, file, gcinfo) && write_gif(gfs, &grr));
+	unsigned out_file_size = 0;
+
+	if (gif_writer_init(&grr, file, gcinfo) && write_gif(gfs, &grr)) {
+		out_file_size = grr.pos;
+	}
 	gif_writer_cleanup(&grr);
-	return ok;
+	return out_file_size;
 }
 
-bool
-Gif_FullWriteData(Gif_Stream *gfs, const Gif_CompressInfo *gcinfo,
-                  unsigned char *data)
-{
+unsigned int Gif_FullWriteData(
+	Gif_Stream       *gfs,
+	unsigned char    *data,
+	Gif_CompressInfo *gcinfo
+) {
 	Gif_Writer grr;
-	bool ok = (gif_writer_init(&grr, NULL, gcinfo) && write_gif(gfs, &grr));
-	memcpy(data, grr.data, grr.cap);
+	unsigned out_data_len = 0;
+
+	if (gif_writer_init(&grr, NULL, gcinfo) && write_gif(gfs, &grr)) {
+		memcpy(data, grr.data, (out_data_len = grr.pos));
+	}
 	gif_writer_cleanup(&grr);
-	return ok;
+	return out_data_len;
 }

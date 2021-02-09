@@ -281,14 +281,16 @@ void        Gif_SetErrorHandler (Gif_ReadErrorHandler);
 Gif_Stream* Gif_FullReadData    (const unsigned char *, unsigned, int, const char *, Gif_ReadErrorHandler);
 
 Gif_Stream* Gif_FullReadFile    (FILE *, int, const char *, Gif_ReadErrorHandler);
-bool        Gif_FullWriteFile   (Gif_Stream *, const Gif_CompressInfo *, FILE *);
-bool        Gif_FullWriteData   (Gif_Stream *, const Gif_CompressInfo *, unsigned char *);
+
+unsigned int Gif_FullWriteFile  (Gif_Stream *, FILE *         , Gif_CompressInfo *);
+unsigned int Gif_FullWriteData  (Gif_Stream *, unsigned char *, Gif_CompressInfo *);
 
 #define Gif_ReadData(d,l) Gif_FullReadData (d,l, GIF_READ_UNCOMPRESSED, NULL, NULL)
 #define Gif_ReadFile(f)   Gif_FullReadFile (f,   GIF_READ_UNCOMPRESSED, NULL, NULL)
 
 #define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
-#define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,NULL,f)
+#define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,f,NULL)
+#define Gif_WriteData(s,d)     Gif_FullWriteData     (s,d,NULL)
 
 
 /** HOOKS AND MISCELLANEOUS **/
@@ -319,13 +321,16 @@ void     Gif_Debug(char *x, ...);
 #define Gif_CopyColormap       Gif_NewColormapFrom
 #define Gif_ImageNumber        Gif_GetImageNum
 
-#define Gif_New(t)         (              (t*) malloc(            sizeof(t)))
-#define Gif_NewArray(t,n)  (    (n) > 0 ? (t*) malloc(            sizeof(t) * (n)) : NULL)
-#define Gif_ReArray(p,t,n) ((p)=(n) > 0 ? (t*)realloc((void*)(p), sizeof(t) * (n)) : NULL)
-#define Gif_Delete(p)                            free((void*)(p))
-#define Gif_DeleteArray(p)                       free((void*)(p))
+#define Gif_New(t)         (    (t*) malloc(            sizeof(t)      ))
+#define Gif_NewArray(t,n)  (    (t*) malloc(            sizeof(t) * (n)))
+#define Gif_ReArray(p,t,n) (p = (t*)realloc((void*)(p), sizeof(t) * (n)))
+#define Gif_Delete(p)                  free((void*)(p))
+#define Gif_DeleteArray(p)             free((void*)(p))
 
 #ifdef GIFSI_COMPILE_CPP
+
+# define Gif_New(_T_)           (new _T_)
+# define Gif_NewArray(_T_, res) (new std::vector<_T_>(res))
 
 namespace GifSI {
 	class Stream : public Gif_Stream {

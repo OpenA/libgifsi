@@ -59,7 +59,7 @@ static void colormap_add(const Gif_Colormap *src, Gif_Colormap *dst, kchist *cm_
 		Gif_ReArray(dst->col, Gif_Color, dst->capacity);
 	}
 	for (int i = 0; i < src->ncol; i++) {
-		kchistitem* khi = kchist_add(cm_hist, kc_Make8ng_gfc(&src->col[i]), 0);
+		kchistitem* khi = kchist_add(cm_hist, kc_MakeUc(src->col[i]), 0);
 
 		if (!khi->count) {
 			int j = (khi->count = dst->ncol);

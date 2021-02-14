@@ -394,7 +394,7 @@ static void kcscreen_init(kcscreen* kcs, Gif_Stream* gfs, int sw, int sh) {
     kcs->data = Gif_NewArray(kacolor, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcs->bg.k = kc_Make8g_gfc(gamma_tables[0], &gfs->global->col[gfs->background]);
+        kcs->bg.k = kc_Make8g(gfs->global->col[gfs->background]);
         kcs->bg.a[3] = KC_MAX;
     } else
         kcs->bg.a[0] = kcs->bg.a[1] = kcs->bg.a[2] = kcs->bg.a[3] = 0;
@@ -480,7 +480,7 @@ static void ksscreen_init(ksscreen* kss, Gif_Stream* gfs, int sw, int sh) {
     kss->data = Gif_NewArray(scale_color, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcolor k = kc_Make8g_gfc(gamma_tables[0], &gfs->global->col[gfs->background]);
+        kcolor k = kc_Make8g(gfs->global->col[gfs->background]);
         kss->bg = sc_makekc(&k);
     } else
         sc_clear(&kss->bg);
@@ -636,8 +636,7 @@ static void scale_image_update_global_kd3(scale_context* sctx) {
     Gif_Colormap* gfcm = sctx->gfs->global;
     assert(sctx->kd3 == &sctx->global_kd3);
     while (sctx->kd3->nitems < gfcm->ncol) {
-        Gif_Color* gfc = &gfcm->col[sctx->kd3->nitems];
-        kd3_add8g(sctx->kd3, gfc->gfc_red, gfc->gfc_green, gfc->gfc_blue);
+        kd3_add8g(sctx->kd3, gfcm->col[sctx->kd3->nitems]);
     }
 }
 
@@ -688,7 +687,7 @@ static void scale_image_output_row(scale_context* sctx, scale_color* sc,
             /* find closest color */
             for (k = 0; k != 3; ++k) {
                 int v = (int) (sc[xo].a[k] + 0.5);
-                oscr[xo].a[k] = KC_CLAMPV(v);
+                oscr[xo].a[k] = KC_ClampV(v);
             }
             oscr[xo].a[3] = KC_MAX;
         }
@@ -710,7 +709,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
                 kchist_add(&kch, xscr[xo].k, 1);
     }
     for (i = 0; i != gfcm->ncol; ++i)
-        kchist_add(&kch, kc_Make8g_gfc(gamma_tables[0], &gfcm->col[i]), (unsigned)-1);
+        kchist_add(&kch, kc_Make8g(gfcm->col[i]), UINT32_MAX);
     kchist_compress(&kch);
 
     kcdiversity_init(&div, &kch, 0);
@@ -726,7 +725,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
         kcdiversity_choose(&div, chosen, 0);
         gfc = kc_togfcg(&kch.h[chosen].ka.k);
         Gif_AddColor(gfcm, &gfc, gfcm->ncol);
-        kd3_add8g(sctx->kd3, gfc.gfc_red, gfc.gfc_green, gfc.gfc_blue);
+        kd3_add8g(sctx->kd3, gfc);
         ++nadded;
     }
 

@@ -27,7 +27,11 @@ typedef struct kcolor {
 	short a[3];
 } kcolor;
 
-#define KC_CLAMPV(v) (_MAX(0, _MIN((v), KC_MAX)))
+#define KC_ClampV(v) (_MAX(0, _MIN((v), KC_MAX)))
+/* set `r/g/b` */
+#define KC_Set(r,g,b) { .a = {r,g,b} }
+/* set the gamma transformation of `r/g/b` */
+#define KC_Set8g(gmt,r,g,b) { .a = {gmt[r], gmt[g], gmt[b]} }
 
 typedef union kacolor {
 	kcolor k;
@@ -37,36 +41,11 @@ typedef union kacolor {
 #endif
 } kacolor;
 
-/* set `*kc` to the gamma transformation of `r/g/b` [RGB] */
-static inline kcolor kc_New(short r, short g, short b) {
-	kcolor kc;
-	kc.a[0] = r; kc.a[1] = g; kc.a[2] = b;
-	return kc;
-}
-
-/* return the gamma transformation of `r/g/b` [RGB] */
-#define kc_Make8g(tab,r,g,b) kc_New(tab[r], tab[g], tab[b])
-
-/* return the gamma transformation of `*gfc` */
-#define kc_Make8g_gfc(tab, gfc) kc_New(\
-	tab[(gfc)->gfc_red],\
-	tab[(gfc)->gfc_green],\
-	tab[(gfc)->gfc_blue])
-
-/* return the uncorrected representation of `r/g/b` [RGB] */
-#define kc_Make8ng(r,g,b) kc_New(\
-	(r << 7) + (r >> 1),\
-	(g << 7) + (g >> 1),\
-	(b << 7) + (b >> 1))
+/* return kcolor gamma transformation of `*gfc` */
+kcolor kc_Make8g(const Gif_Color);
 
 /* return the kcolor representation of `*gfc` (no gamma transformation) */
-#define kc_Make8ng_gfc(gfc) kc_Make8ng(\
-	(gfc)->gfc_red,\
-	(gfc)->gfc_green,\
-	(gfc)->gfc_blue)
-
-/* return transparency */
-#define kc_Clear(kc) (kc.a[0] = kc.a[1] = kc.a[2] = kc.a[3] = 0)
+kcolor kc_MakeUc(const Gif_Color);
 
 static inline kacolor kac_New(short r, short g, short b, short a) {
 	kacolor kac;
@@ -155,7 +134,7 @@ void kd3_add_transformed(kd3_tree* kd3, const kcolor* k);
 
 /* given 8-bit color `a0/a1/a2` (RGB), gamma-transform it, transform it
    by `kd3->transform` if necessary, and add it to `*kd3` */
-void kd3_add8g(kd3_tree* kd3, int a0, int a1, int a2);
+void kd3_add8g(kd3_tree *, const Gif_Color);
 
 /* set `kd3->xradius`. given color `i`, `kd3->xradius[i]` is the square of the
    color's uniquely owned neighborhood.
@@ -178,7 +157,7 @@ int kd3_closest_transformed(kd3_tree* kd3, const kcolor* k,
 /* given 8-bit color `a0/a1/a2` (RGB), gamma-transform it, transform it by
    `kd3->transform` if necessary, and return the index of the color in
    `*kd3` closest to it. */
-int kd3_closest8g(kd3_tree* kd3, int a0, int a1, int a2);
+int kd3_closest8g(kd3_tree *, const Gif_Color);
 
 /* disable color index `i` in `*kd3`: it will never be returned by
    `kd3_closest*` */

@@ -25,7 +25,6 @@ typedef struct Gt_ColorTransform Gt_ColorTransform;
 
 #if ENABLE_THREADS
 #include <pthread.h>
-extern pthread_mutex_t kd3_sort_lock;
 #endif
 
 typedef struct Gt_Frame {

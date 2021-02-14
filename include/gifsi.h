@@ -52,7 +52,6 @@ typedef struct Gif_Image      Gif_Image;
 typedef struct Gif_Colormap   Gif_Colormap;
 typedef struct Gif_Comment    Gif_Comment;
 typedef struct Gif_Extension  Gif_Extension;
-typedef struct Gif_Record     Gif_Record;
 
 typedef unsigned short Gif_Code;
 
@@ -264,6 +263,39 @@ void            Gif_DeleteExtension (Gif_Extension *);
 #define Gif_OptimizeFragments(gfs,gfi) Gif_FullOptimizeFragments(gfs,f,h,NULL)
 
 void Gif_FullOptimizeFragments(Gif_Stream *, int, int, Gif_CompressInfo *);
+
+/* Quantization */
+enum Gif_Dither {
+	DiP_Posterize = 0,
+	DiP_FloydSteinberg,
+	DiP_3x3_Ordered,
+	DiP_4x4_Ordered,
+	DiP_8x8_Ordered,
+	DiP_45_Diagonal,
+	DiP_64x64_ReOrdered,
+	DiP_SquareHalftone,
+	DiP_TriangleHalftone
+};
+
+typedef struct Gif_DitherPlan Gif_DitherPlan;
+typedef enum   Gif_Dither     Gif_Dither;
+typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
+                              void *, unsigned *, const unsigned char *);
+
+struct Gif_DitherPlan {
+	unsigned char *matrix;
+	_dith_work_fn  doWork;
+};
+
+void Gif_InitDitherPlan(Gif_DitherPlan *, Gif_Dither, unsigned char, unsigned char, unsigned);
+void Gif_FreeDitherPlan(Gif_DitherPlan *);
+
+#define GIF_DIVERSITY_FLAT              0
+#define GIF_DIVERSITY_BLEND             1
+#define GIF_DIVERSITY_MEDIAN_CUT        2
+
+void Gif_FullQuantizeColors  (Gif_Stream *, Gif_Colormap *, Gif_DitherPlan *);
+void Gif_FullColorsDiversity (Gif_Stream *, unsigned int  , Gif_DitherPlan *);
 
 
 /** READING AND WRITING **/

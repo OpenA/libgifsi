@@ -74,15 +74,15 @@ void kc_set_gamma(int type, double gamma) {
 			gamma_tables[1] = Gif_NewArray(unsigned short, 256);
 		}
 		for (j = 0; j != 256; j++) {
-			gamma_tables[0][j] = (int)(pow(j / 255.0,     gamma) * 32767 + 0.5);
-			gamma_tables[1][j] = (int)(pow(j / 256.0, 1 / gamma) * 32767 + 0.5);
+			gamma_tables[0][j] = (int)(pow(j / 255.0,     gamma) * INT16_MAX + 0.5);
+			gamma_tables[1][j] = (int)(pow(j / 256.0, 1 / gamma) * INT16_MAX + 0.5);
 		/* The gamma_tables[i][j]++ ensures that round-trip gamma correction
 		   always preserve the input colors. Without it, one might have,
 		   for example, input values 0, 1, and 2 all mapping to
 		   gamma-corrected value 0. Then a round-trip through gamma
 		   correction loses information. */
 			for (i = 0; i != 2; i++)
-				while (j && gamma_tables[i][j] <= gamma_tables[i][j - 1] && gamma_tables[i][j] < 32767)
+				while (j && gamma_tables[i][j] <= gamma_tables[i][j - 1] && gamma_tables[i][j] < INT16_MAX)
 					gamma_tables[i][j]++;
 		}
 	}
@@ -971,7 +971,8 @@ void colormap_image_posterize(
 	unsigned char *new_data,
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
-	unsigned      *histogram
+	unsigned      *histogram,
+	const unsigned char *_
 ) {
 	Gif_Color *col = old_cm->col;
 	int i, ncol = old_cm->ncol;
@@ -1001,10 +1002,14 @@ void colormap_image_posterize(
 #define DITHER_ITEM2ERR (1 << (DITHER_SHIFT - 7))
 #define N_RANDOM_VALUES 512
 
-void colormap_image_floyd_steinberg(Gif_Image *gfi, unsigned char *all_new_data,
-									Gif_Colormap *old_cm, kd3_tree *kd3,
-									unsigned *histogram)
-{
+void colormap_image_floyd_steinberg(
+	Gif_Image     *gfi,
+	unsigned char *all_new_data,
+	Gif_Colormap  *old_cm,
+	kd3_tree      *kd3,
+	unsigned      *histogram,
+	const unsigned char *_
+) {
 	static int *random_values = 0;
 
 	int width = gfi->width;
@@ -1465,18 +1470,6 @@ static void colormap_image_ordered(
 	Gif_DeleteArray(plan);
 }
 
-static void dither(Gif_Image *gfi, unsigned char *new_data, Gif_Colormap *old_cm,
-				   kd3_tree *kd3, unsigned *histogram, Gt_OutputData *od)
-{
-	if (od->dither_type == dither_default || od->dither_type == dither_floyd_steinberg)
-		colormap_image_floyd_steinberg(gfi, new_data, old_cm, kd3, histogram);
-	else if (od->dither_type == dither_ordered || od->dither_type == dither_ordered_new)
-		colormap_image_ordered(gfi, new_data, old_cm, kd3, histogram,
-							   od->dither_data);
-	else
-		colormap_image_posterize(gfi, new_data, old_cm, kd3, histogram);
-}
-
 /* return value 1 means run the dither again */
 static bool try_assign_transparency(
 	Gif_Image     *gfi,
@@ -1549,7 +1542,8 @@ static bool try_assign_transparency(
 	return false;
 }
 
-void colormap_stream(Gif_Stream *gfs, Gif_Colormap *new_cm, Gt_OutputData *od)
+
+void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPlan *dp)
 {
 	kd3_tree kd3;
 	Gif_Color *new_col = new_cm->col;
@@ -1598,14 +1592,14 @@ void colormap_stream(Gif_Stream *gfs, Gif_Colormap *new_cm, Gt_OutputData *od)
 			do {
 				for (j = 0; j < 256; j++)
 					histogram[j] = 0;
-				dither(gfi, new_data, gfcm, &kd3, histogram, od);
+				dp->doWork(gfi, new_data, gfcm, &kd3, histogram, dp->matrix);
 			} while (try_assign_transparency(gfi, gfcm, new_data, new_cm, &new_ncol,
 											 &kd3, histogram));
 
 			Gif_ReleaseUncompressedImage(gfi);
 			/* version 1.28 bug fix: release any compressed version or it'll cause bad images */
 			Gif_ReleaseCompressedImage(gfi);
-			Gif_SetUncompressedImage(gfi, new_data, Gif_Free, 0);
+			Gif_SetUncompressedImage(gfi, new_data, Gif_Free, false);
 
 			/* update count of used colors */
 			for (j = 0; j < 256; j++)
@@ -1620,7 +1614,7 @@ void colormap_stream(Gif_Stream *gfs, Gif_Colormap *new_cm, Gt_OutputData *od)
 
 		if (gfi->local) {
 			Gif_DeleteColormap(gfi->local);
-			gfi->local = 0;
+			gfi->local = NULL;
 		}
 
 		/* 1.92: recompress *after* deleting the local colormap */
@@ -1630,7 +1624,7 @@ void colormap_stream(Gif_Stream *gfs, Gif_Colormap *new_cm, Gt_OutputData *od)
 		}
 	}
 
-	/* Set new_cm->ncol from new_ncol. We didn't update new_cm->ncol before so
+  /* Set new_cm->ncol from new_ncol. We didn't update new_cm->ncol before so
      the closest-color algorithms wouldn't see any new transparent colors.
      That way added transparent colors were only used for transparency. */
 	new_cm->ncol = new_ncol;
@@ -1802,80 +1796,50 @@ static unsigned char *make_halftone_matrix_triangular(int w, int h, int nc)
 	return halftone_pixel_matrix(hp, w, h, nc);
 }
 
-int set_dither_type(Gt_OutputData *od, const char *name)
+
+void Gif_InitDitherPlan(Gif_DitherPlan *dp, Gif_Dither type, unsigned char w, unsigned char h, unsigned ncol)
 {
-	int parm[4], nparm = 0;
-	const char *comma = strchr(name, ',');
-	char buf[256];
+	dp->matrix = NULL;
 
-	/* separate arguments from dither name */
-	if (comma && (size_t)(comma - name) < sizeof(buf)) {
-		memcpy(buf, name, comma - name);
-		buf[comma - name] = 0;
-		name = buf;
-	}
-	while (comma && *comma && isdigit((unsigned char)comma[1]))
-		parm[nparm++] = strtol(&comma[1], (char **)&comma, 10);
-
-	/* parse dither name */
-	if (od->dither_type == dither_ordered_new)
-		Gif_DeleteArray(od->dither_data);
-	od->dither_type = dither_none;
-
-	if (strcmp(name, "none") == 0 || strcmp(name, "posterize") == 0)
-		/* ok */;
-	else if (strcmp(name, "default") == 0)
-		od->dither_type = dither_default;
-	else if (strcmp(name, "floyd-steinberg") == 0 || strcmp(name, "fs") == 0)
-		od->dither_type = dither_floyd_steinberg;
-	else if (strcmp(name, "o3") == 0 || strcmp(name, "o3x3") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 3))
-	{
-		od->dither_type = dither_ordered;
-		od->dither_data = dither_matrix_o3x3;
-	}
-	else if (strcmp(name, "o4") == 0 || strcmp(name, "o4x4") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 4))
-	{
-		od->dither_type = dither_ordered;
-		od->dither_data = dither_matrix_o4x4;
-	}
-	else if (strcmp(name, "o8") == 0 || strcmp(name, "o8x8") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 8))
-	{
-		od->dither_type = dither_ordered;
-		od->dither_data = dither_matrix_o8x8;
-	}
-	else if (strcmp(name, "ro64") == 0 || strcmp(name, "ro64x64") == 0 || strcmp(name, "o") == 0 || strcmp(name, "ordered") == 0)
-	{
-		od->dither_type = dither_ordered;
-		od->dither_data = dither_matrix_ro64x64;
-	}
-	else if (strcmp(name, "diag45") == 0 || strcmp(name, "diagonal") == 0)
-	{
-		od->dither_type = dither_ordered;
-		od->dither_data = dither_matrix_diagonal45_8;
-	}
-	else if (strcmp(name, "halftone") == 0 || strcmp(name, "half") == 0 || strcmp(name, "trihalftone") == 0 || strcmp(name, "trihalf") == 0)
-	{
-		int size = nparm >= 1 && parm[0] > 0 ? parm[0] : 6;
-		int ncol = nparm >= 2 && parm[1] > 1 ? parm[1] : 2;
-		od->dither_type = dither_ordered_new;
-		od->dither_data = make_halftone_matrix_triangular(size, (int)(size * sqrt(3) + 0.5), ncol);
-	}
-	else if (strcmp(name, "sqhalftone") == 0 || strcmp(name, "sqhalf") == 0 || strcmp(name, "squarehalftone") == 0)
-	{
-		int size = nparm >= 1 && parm[0] > 0 ? parm[0] : 6;
-		int ncol = nparm >= 2 && parm[1] > 1 ? parm[1] : 2;
-		od->dither_type = dither_ordered_new;
-		od->dither_data = make_halftone_matrix_square(size, size, ncol);
+	if (type == DiP_Posterize) {
+		dp->doWork = (_dith_work_fn)colormap_image_posterize;
 	} else
-		return -1;
+	if (type == DiP_FloydSteinberg) {
+		dp->doWork = (_dith_work_fn)colormap_image_floyd_steinberg;
+	} else
+	if (type == DiP_SquareHalftone) {
+		dp->doWork = (_dith_work_fn)colormap_image_ordered;
+		dp->matrix = make_halftone_matrix_square(w, h, ncol);
+	} else
+	if (type == DiP_TriangleHalftone) {
+		dp->doWork = (_dith_work_fn)colormap_image_ordered;
+		dp->matrix = make_halftone_matrix_triangular(w, h, ncol);
+	} else {
+		const unsigned size = (
+			type == DiP_3x3_Ordered     ? DiMx_3X3_SIZE :
+			type == DiP_4x4_Ordered     ? DiMx_4X4_SIZE :
+			type == DiP_64x64_ReOrdered ? DiMx_64X64_SIZE : DiMx_8X8_SIZE
+		);
 
-	if (od->dither_type == dither_ordered && nparm >= 2 && parm[1] > 1 && parm[1] != od->dither_data[3]) {
-		int size = od->dither_data[0] * od->dither_data[1];
-		unsigned char *dd = Gif_NewArray(unsigned char, 4 + size);
-		memcpy(dd, od->dither_data, 4 + size);
-		dd[3] = parm[1];
-		od->dither_data = dd;
-		od->dither_type = dither_ordered_new;
+		dp->doWork = (_dith_work_fn)colormap_image_ordered;
+		dp->matrix = Gif_NewArray(unsigned char, size);
+
+		memcpy(dp->matrix, (
+			type == DiP_3x3_Ordered ? Dither_Matrix_o3x3 :
+			type == DiP_4x4_Ordered ? Dither_Matrix_o4x4 :
+			type == DiP_8x8_Ordered ? Dither_Matrix_o8x8 :
+			type == DiP_45_Diagonal ? Dither_Matrix_diagonal45_8 :
+			type == DiP_64x64_ReOrdered ? Dither_Matrix_ro64x64 : Dither_Matrix_halftone8
+		), size);
+
+		if (ncol >= 2 && h > 1 && h != dp->matrix[3])
+			dp->matrix[3] = h;
 	}
-	return 0;
 }
+
+void Gif_FreeDitherPlan(Gif_DitherPlan *dp)
+{
+	Gif_DeleteArray(dp->matrix);
+	dp->doWork = NULL;
+}
+

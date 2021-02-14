@@ -897,13 +897,20 @@ set_new_fixed_colormap(const char *name)
 static void
 do_colormap_change(Gif_Stream *gfs)
 {
+  Gif_DitherPlan dp;
+
+  Gif_InitDitherPlan(&dp,
+      active_output_data.dither_type,
+      active_output_data.dither_data[0],
+      active_output_data.dither_data[1],
+      active_output_data.dither_data[2]);
+
   if (active_output_data.colormap_fixed || active_output_data.colormap_size > 0)
     kc_set_gamma(active_output_data.colormap_gamma_type,
                  active_output_data.colormap_gamma);
 
   if (active_output_data.colormap_fixed)
-    colormap_stream(gfs, active_output_data.colormap_fixed,
-                    &active_output_data);
+      Gif_FullQuantizeColors(gfs, active_output_data.colormap_fixed, &dp);
 
   if (active_output_data.colormap_size > 0) {
     kchist kch;
@@ -943,11 +950,12 @@ do_colormap_change(Gif_Stream *gfs)
     }
 
     new_cm = (*adapt_func)(&kch, &active_output_data);
-    colormap_stream(gfs, new_cm, &active_output_data);
+    Gif_FullQuantizeColors(gfs, new_cm, &dp);
 
     Gif_DeleteColormap(new_cm);
     kchist_cleanup(&kch);
   }
+  Gif_FreeDitherPlan(&dp);
 }
 
 
@@ -1256,7 +1264,7 @@ initialize_def_frame(void)
   def_output_data.colormap_size = 0;
   def_output_data.colormap_fixed = 0;
   def_output_data.colormap_algorithm = COLORMAP_DIVERSITY;
-  def_output_data.dither_type = dither_none;
+  def_output_data.dither_type = DiP_Posterize;
   def_output_data.dither_name = "none";
   def_output_data.colormap_gamma_type = KC_GAMMA_SRGB;
   def_output_data.colormap_gamma = 2.2;
@@ -1305,7 +1313,9 @@ combine_output_options(void)
   if (CHANGED(recent, CH_DITHER)) {
     MARK_CH(output, CH_DITHER);
     active_output_data.dither_type = def_output_data.dither_type;
-    active_output_data.dither_data = def_output_data.dither_data;
+    active_output_data.dither_data[0] = def_output_data.dither_data[0];
+    active_output_data.dither_data[1] = def_output_data.dither_data[1];
+    active_output_data.dither_data[2] = def_output_data.dither_data[2];
   }
   if (CHANGED(recent, CH_GAMMA)) {
     MARK_CH(output, CH_GAMMA);
@@ -1437,6 +1447,57 @@ parse_resize_geometry_opt(Gt_OutputData* odata, const char* str, Clp_Parser* clp
 
 error:
     Clp_OptionError(clp, "argument to %O must be a valid geometry specification");
+}
+
+int set_dither_type(Gt_OutputData *od, const char *name)
+{
+  int parm[4], nparm = 0;
+  const char *comma = strchr(name, ',');
+  char buf[256];
+
+  /* separate arguments from dither name */
+  if (comma && (size_t)(comma - name) < sizeof(buf))
+  {
+    memcpy(buf, name, comma - name);
+    buf[comma - name] = 0;
+    name = buf;
+  }
+  while (comma && *comma && isdigit((unsigned char)comma[1]))
+    parm[nparm++] = strtol(&comma[1], (char **)&comma, 10);
+
+  int size = nparm >= 1 && parm[0] > 0 ? parm[0] : 6;
+  int ncol = nparm >= 2 && parm[1] > 1 ? parm[1] : 2;
+
+  /* parse dither name */
+  od->dither_type = DiP_Posterize;
+  od->dither_data[1] = od->dither_data[0] = size;
+  od->dither_data[2] = ncol;
+
+  if (strcmp(name, "none") == 0 || strcmp(name, "posterize") == 0)
+    /* ok */;
+  else if (strcmp(name, "default") == 0 || strcmp(name, "floyd-steinberg") == 0 || strcmp(name, "fs") == 0)
+    od->dither_type = DiP_FloydSteinberg;
+  else if (strcmp(name, "o3") == 0 || strcmp(name, "o3x3") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 3))
+    od->dither_type = DiP_3x3_Ordered;
+  else if (strcmp(name, "o4") == 0 || strcmp(name, "o4x4") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 4))
+    od->dither_type = DiP_4x4_Ordered;
+  else if (strcmp(name, "o8") == 0 || strcmp(name, "o8x8") == 0 || (strcmp(name, "o") == 0 && nparm >= 1 && parm[0] == 8))
+    od->dither_type = DiP_8x8_Ordered;
+  else if (strcmp(name, "ro64") == 0 || strcmp(name, "ro64x64") == 0 || strcmp(name, "o") == 0 || strcmp(name, "ordered") == 0)
+    od->dither_type = DiP_64x64_ReOrdered;
+  else if (strcmp(name, "diag45") == 0 || strcmp(name, "diagonal") == 0)
+    od->dither_type = DiP_45_Diagonal;
+  else if (strcmp(name, "sqhalftone") == 0 || strcmp(name, "sqhalf") == 0 || strcmp(name, "squarehalftone") == 0)
+    od->dither_type = DiP_SquareHalftone;
+  else if (strcmp(name, "halftone") == 0 || strcmp(name, "half") == 0 || strcmp(name, "trihalftone") == 0 || strcmp(name, "trihalf") == 0)
+  {
+    od->dither_type = DiP_TriangleHalftone;
+    od->dither_data[1] = (int)(size * 1.732051 + 0.5);
+  }
+  else
+    return -1;
+
+  return 0;
 }
 
 

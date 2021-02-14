@@ -10,6 +10,11 @@
 # define UINT16_MAX 0xFFFFU
 #endif
 
+#ifndef INT32_MAX
+# define INT32_MAX 0x7FFFFFFF
+# define INT16_MAX 0x7FFF
+#endif
+
 #define _MIN(a, b) ((a) < (b) ? (a) : (b))
 #define _MAX(a, b) ((a) > (b) ? (a) : (b))
 

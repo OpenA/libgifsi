@@ -75,23 +75,29 @@ static const unsigned short srgb_revgamma_table_256[256] = {
 };
 
 
+
 /*
-  Halftone algorithms
+ * Halftone matrix
  */
-static const unsigned char dither_matrix_o3x3[4 + 3 * 3] = {
+#define DiMx_3X3_SIZE   4 + (3 * 3)
+#define DiMx_4X4_SIZE   4 + (4 * 4)
+#define DiMx_8X8_SIZE   4 + (8 * 8)
+#define DiMx_64X64_SIZE 4 + 64 * 64
+
+static const unsigned char Dither_Matrix_o3x3[DiMx_3X3_SIZE] = {
 	3, 3, 9, 9,
 	2, 6, 3,
 	5, 0, 8,
 	1, 7, 4
 };
-static const unsigned char dither_matrix_o4x4[4 + 4 * 4] = {
+static const unsigned char Dither_Matrix_o4x4[DiMx_4X4_SIZE] = {
 	4, 4, 16, 16,
 	0, 8, 3, 10,
 	12, 4, 14, 6,
 	2, 11, 1, 9,
 	15, 7, 13, 5
 };
-static const unsigned char dither_matrix_o8x8[4 + 8 * 8] = {
+static const unsigned char Dither_Matrix_o8x8[DiMx_8X8_SIZE] = {
 	8, 8, 64, 64,
 	0, 48, 12, 60, 3, 51, 15, 63,
 	32, 16, 44, 28, 35, 19, 47, 31,
@@ -102,7 +108,7 @@ static const unsigned char dither_matrix_o8x8[4 + 8 * 8] = {
 	10, 58, 6, 54, 9, 57, 5, 53,
 	42, 26, 38, 22, 41, 25, 37, 21
 };
-static const unsigned char dither_matrix_ro64x64[4 + 64 * 64] = {
+static const unsigned char Dither_Matrix_ro64x64[DiMx_64X64_SIZE] = {
 	64, 64, 16, 16,
 	6, 15, 2, 15, 2, 14, 1, 13, 2, 14, 5, 13, 0, 14, 0, 9, 6, 10, 7, 13, 6, 13, 3, 10, 5, 15, 4, 11, 0, 11, 6, 10, 7, 12, 7, 13, 0, 9, 6, 15, 6, 10, 0, 15, 1, 15, 0, 8, 0, 15, 6, 15, 7, 15, 7, 9, 1, 15, 3, 8, 1, 8, 0, 14,
 	9, 3, 10, 5, 10, 6, 10, 5, 9, 6, 9, 2, 9, 4, 13, 4, 13, 3, 8, 3, 10, 1, 13, 6, 11, 1, 12, 3, 14, 5, 15, 3, 8, 3, 8, 3, 12, 4, 11, 3, 13, 3, 8, 4, 9, 6, 12, 4, 11, 6, 11, 3, 10, 0, 12, 1, 11, 7, 12, 4, 12, 4, 11, 5,
@@ -169,7 +175,7 @@ static const unsigned char dither_matrix_ro64x64[4 + 64 * 64] = {
 	4, 14, 6, 11, 7, 13, 6, 10, 4, 8, 4, 11, 6, 8, 5, 13, 7, 14, 7, 14, 1, 9, 0, 12, 1, 9, 1, 12, 4, 14, 7, 10, 4, 13, 7, 13, 7, 11, 4, 10, 1, 11, 7, 13, 4, 12, 1, 10, 4, 12, 2, 8, 2, 12, 2, 10, 2, 12, 1, 12, 4, 12, 2, 12,
 	8, 2, 13, 2, 8, 1, 13, 1, 12, 1, 12, 2, 12, 2, 11, 1, 9, 2, 11, 3, 12, 4, 8, 4, 12, 4, 10, 6, 10, 1, 13, 2, 11, 2, 10, 1, 12, 0, 14, 2, 14, 4, 9, 2, 8, 1, 13, 4, 8, 0, 12, 4, 11, 6, 12, 6, 11, 7, 10, 7, 11, 2, 10, 7
 };
-static const unsigned char dither_matrix_halftone8[4 + 8 * 8] = {
+static const unsigned char Dither_Matrix_halftone8[DiMx_8X8_SIZE] = {
 	8, 8, 64, 3,
 	60, 53, 42, 26, 27, 43, 54, 61,
 	52, 41, 25, 13, 14, 28, 44, 55,
@@ -180,7 +186,7 @@ static const unsigned char dither_matrix_halftone8[4 + 8 * 8] = {
 	59, 50, 36, 20, 19, 33, 47, 56,
 	63, 58, 49, 35, 34, 48, 57, 62
 };
-static const unsigned char dither_matrix_diagonal45_8[4 + 8 * 8] = {
+static const unsigned char Dither_Matrix_diagonal45_8[DiMx_8X8_SIZE] = {
 	8, 8, 64, 2,
 	16, 32, 48, 56, 40, 24, 8, 0,
 	36, 52, 60, 44, 28, 12, 4, 20,

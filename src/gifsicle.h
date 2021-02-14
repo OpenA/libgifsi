@@ -118,7 +118,7 @@ typedef struct {
   int colormap_algorithm;
   int colormap_needs_transparency;
   int dither_type;
-  const uint8_t* dither_data;
+  int dither_data[3];
   const char* dither_name;
   int colormap_gamma_type;
   double colormap_gamma;
@@ -286,7 +286,6 @@ enum {
     dither_ordered, dither_ordered_new
 };
 int     set_dither_type(Gt_OutputData* od, const char* name);
-void    colormap_stream(Gif_Stream*, Gif_Colormap*, Gt_OutputData*);
 
 /*****
  * parsing stuff

@@ -549,7 +549,7 @@ static Gif_Colormap *_Ex_(make_opt_colormap)(
 	short nglobal_all = (all_ncol <= 257 ? all_ncol - 1 : 256);
 	bool permutation_changed = true;
 
-	assert(all_ncol <= 0x7FFFFFFF);
+	assert(all_ncol <= INT32_MAX);
 
 	/* set initial penalties and permutation for each color */
 	for (c = 0; c < all_ncol; c++) {

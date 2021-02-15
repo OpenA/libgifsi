@@ -54,7 +54,7 @@ bool Gif_CopyStream(const Gif_Stream *src, Gif_Stream *dest)
 	dest->screen_width  = src->screen_width;
 	dest->screen_height = src->screen_height;
 	dest->loopcount     = src->loopcount;
-	if (!(dest->global  = Gif_NewColormapFrom(src->global)))
+	if (!(dest->global  = Gif_CopyColormap(src->global)))
 		return false;
 	return true;
 }
@@ -137,7 +137,7 @@ bool Gif_CopyImage(const Gif_Image *src, Gif_Image *dest)
 			gfex = gfex->next;
 		}
 	}
-	if (src->local && !(dest->local = Gif_NewColormapFrom(src->local)))
+	if (src->local && !(dest->local = Gif_CopyColormap(src->local)))
 		return false;
 
 	dest->transparent = src->transparent;
@@ -188,7 +188,7 @@ Gif_NewColormap(int count, int capacity) {
 
 	Gif_Colormap *gfcm = Gif_New(Gif_Colormap);
 	if (gfcm != NULL) {
-		if (!Gif_FillColormap(gfcm, count, capacity)) {
+		if (!Gif_InitColormap(gfcm, count, capacity)) {
 			Gif_DeleteColormap(gfcm);
 			return NULL;
 		}
@@ -196,14 +196,7 @@ Gif_NewColormap(int count, int capacity) {
 	return gfcm;
 }
 
-void Gif_InitColormap(Gif_Colormap *gfcm)
-{
-	gfcm->capacity = gfcm->ncol = 0;
-	gfcm->refcount = gfcm->user_flags = 0;
-	gfcm->col = NULL;
-}
-
-bool Gif_FillColormap(Gif_Colormap *gfcm, int count, int capacity) {
+bool Gif_InitColormap(Gif_Colormap *gfcm, int count, int capacity) {
 	if (count > capacity)
 		capacity    = count;
 	gfcm->ncol      = count;
@@ -215,7 +208,7 @@ bool Gif_FillColormap(Gif_Colormap *gfcm, int count, int capacity) {
 }
 
 Gif_Colormap *
-Gif_NewColormapFrom(const Gif_Colormap *src) {
+Gif_CopyColormap(const Gif_Colormap *src) {
 	if (!src)
 		return NULL;
 	Gif_Colormap *dest = Gif_NewColormap(src->ncol, src->capacity);
@@ -225,32 +218,32 @@ Gif_NewColormapFrom(const Gif_Colormap *src) {
 	return dest;
 }
 
-int Gif_FindColor(Gif_Colormap *gfcm, Gif_Color *c)
+int Gif_SearchColor(const Gif_Color *cols, const int ncol, const Gif_Color c)
 {
-	for (int i = 0; i < gfcm->ncol; i++) {
-		if(GIF_COLOREQ(&gfcm->col[i], c))
+	for (int i = 0; i < ncol; i++) {
+		if (Gif_ColorEq(cols[i], c))
 			return i;
 	}
 	return -1;
 }
 
-int Gif_AddColor(Gif_Colormap *gfcm, Gif_Color *c, int look_from)
+int Gif_PutColor(Gif_Colormap *gfcm, int look_from, Gif_Color c)
 {
-	const int ncols = gfcm->ncol;
-	if (look_from >= 0) {
-		for (int i = look_from; i < ncols; i++) {
-			if (GIF_COLOREQ(&gfcm->col[i], c))
-				return i;
+	const int midx = gfcm->ncol;
+	if (look_from >= 0 && look_from < midx) {
+		while (look_from < midx) {
+			if (Gif_ColorEq(gfcm->col[look_from], c))
+				return look_from;
+			look_from++;
 		}
 	}
-	if (ncols >= gfcm->capacity) {
-		Gif_ReArray(gfcm->col, Gif_Color, (gfcm->capacity *= 2));
-		if (!gfcm->col)
+	if (midx >= gfcm->capacity) {
+		if (!Gif_ReArray(gfcm->col, Gif_Color, gfcm->capacity *= 2))
 			return -1;
 	}
-	gfcm->col[ncols] = *c;
+	gfcm->col[midx] = c;
 	gfcm->ncol++;
-	return ncols;
+	return midx;
 }
 
 

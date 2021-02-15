@@ -62,8 +62,7 @@ combine_colormaps(Gif_Colormap *gfcm, Gif_Colormap *newcm)
 {
   int i, gfcm_ncol = gfcm ? gfcm->ncol : 0;
   for (i = 0; i < gfcm_ncol; i++) {
-    Gif_Color *c = &gfcm->col[i];
-    c->pixel = Gif_AddColor(newcm, c, 1);
+    gfcm->col[i].pixel = Gif_PutColor(newcm, 1, gfcm->col[i]);
   }
 }
 
@@ -228,7 +227,7 @@ name_color(int color, Gif_Colormap *gfcm, char *buf)
     strcpy(buf, "transparent");
   else {
     Gif_Color *c = &gfcm->col[color];
-    sprintf(buf, "#%02X%02X%02X", c->gfc_red, c->gfc_green, c->gfc_blue);
+    sprintf(buf, "#%02X%02X%02X", c->R, c->G, c->B);
   }
 }
 

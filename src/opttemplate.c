@@ -524,7 +524,7 @@ retry_frame:
    all_colormap->col[P].pixel >= 256 ==> P is not in the global colormap.
 
    Otherwise, all_colormap->col[P].pixel == the J so that
-   GIF_COLOREQ(&all_colormap->col[P], &gfs->global->col[J]).
+   Gif_ColorEq(all_colormap->col[P], gfs->global->col[J]).
 
    On return, the 'colormap_penalty' component of an image's Gif_OptData
    structure is <0 iff that image will need a local colormap.

@@ -45,9 +45,19 @@ static Gif_OptData *new_opt_data(void)
 	return od;
 }
 
+static inline kcolor kc_MakeUc(const Gif_Color gfc)
+{
+	kcolor kc = KC_Set(
+		(gfc.R << 7) + (gfc.R >> 1),
+		(gfc.G << 7) + (gfc.G >> 1),
+		(gfc.B << 7) + (gfc.B >> 1)
+	);
+	return kc;
+}
+
 /* colormap_add: Ensure that each color in 'src' is represented in 'dst'.
    For each color 'i' in 'src', src->col[i].pixel == some j
-   so that GIF_COLOREQ(&src->col[i], &dst->col[j]).
+   so that Gif_ColorEq(src->col[i], dst->col[j]).
    dst->col[0] is reserved for transparency;
    no source color willbe mapped to it. */
 
@@ -139,8 +149,8 @@ static void increment_penalties(unsigned char *need, const int count, penalty_t 
 
 static int rgb_sort_cmp(const Gif_Color *col1, const Gif_Color *col2, void *_)
 {
-	int value1 = (col1->gfc_red << 16) | (col1->gfc_green << 8) | col1->gfc_blue;
-	int value2 = (col2->gfc_red << 16) | (col2->gfc_green << 8) | col2->gfc_blue;
+	int value1 = (col1->R << 16) | (col1->G << 8) | col1->B;
+	int value2 = (col2->R << 16) | (col2->G << 8) | col2->B;
 	return value1 - value2;
 }
 
@@ -256,14 +266,12 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 
 	/* combine colormaps */
 	Gif_Colormap *gl_cmap = Gif_NewColormap(1, 384);
-	gl_cmap->col[0].gfc_red   = 255;
-	gl_cmap->col[0].gfc_green = 255;
-	gl_cmap->col[0].gfc_blue  = 255;
+	Gif_SetColor( gl_cmap->col[0], 255, 255, 255 );
 
 	if (!gfs->global) {
-		Gif_Color *col = (gfs->global = Gif_NewColormap(256, 256))->col;
-		for (i = 0; i < 256; i++, col++)
-			col->gfc_red = col->gfc_green = col->gfc_blue = i;
+		 gfs->global = Gif_NewColormap(256, 256);
+		for (i = 0; i < 256; i++)
+			Gif_SetColor(gfs->global->col[i], i, i, i);
 	}
 
 	/* Histogram so we can find colors quickly */

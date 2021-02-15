@@ -44,9 +44,6 @@ typedef union kacolor {
 /* return kcolor gamma transformation of `*gfc` */
 kcolor kc_Make8g(const Gif_Color);
 
-/* return the kcolor representation of `*gfc` (no gamma transformation) */
-kcolor kc_MakeUc(const Gif_Color);
-
 static inline kacolor kac_New(short r, short g, short b, short a) {
 	kacolor kac;
 	kac.a[0] = r; kac.a[1] = g;
@@ -65,10 +62,10 @@ static inline Gif_Color kc_togfcg(const kcolor* x) {
 	kcolor xx = *x;
 	Gif_Color gfc;
 	kc_revgamma_transform(&xx);
-	gfc.gfc_red   = (unsigned char)(xx.a[0] >> 7);
-	gfc.gfc_green = (unsigned char)(xx.a[1] >> 7);
-	gfc.gfc_blue  = (unsigned char)(xx.a[2] >> 7);
-	gfc.haspixel  = 0;
+	gfc.R = (unsigned char)(xx.a[0] >> 7);
+	gfc.G = (unsigned char)(xx.a[1] >> 7);
+	gfc.B = (unsigned char)(xx.a[2] >> 7);
+	gfc.haspixel = 0;
 	return gfc;
 }
 

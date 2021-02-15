@@ -19,15 +19,6 @@
 /* First merging stage: Mark the used colors in all colormaps. */
 
 void
-unmark_colors(Gif_Colormap *gfcm)
-{
-  int i;
-  if (gfcm)
-    for (i = 0; i < gfcm->ncol; i++)
-      gfcm->col[i].haspixel = 0;
-}
-
-void
 unmark_colors_2(Gif_Colormap *gfcm)
 {
     int i;
@@ -99,17 +90,6 @@ mark_used_colors(Gif_Stream *gfs, Gif_Image *gfi, Gt_Crop *crop,
 
 
 int
-find_color_index(Gif_Color *c, int nc, Gif_Color *color)
-{
-  int index;
-  for (index = 0; index < nc; index++)
-    if (GIF_COLOREQ(&c[index], color))
-      return index;
-  return -1;
-}
-
-
-int
 merge_colormap_if_possible(Gif_Colormap *dest, Gif_Colormap *src)
 {
     Gif_Color *srccol;
@@ -131,7 +111,7 @@ merge_colormap_if_possible(Gif_Colormap *dest, Gif_Colormap *src)
             int mapto = (srccol[i].pixel < 256 ? (int)srccol[i].pixel : -1);
 
             if (mapto == -1)
-                mapto = find_color_index(destcol, ndestcol, &srccol[i]);
+                mapto = Gif_SearchColor(destcol, ndestcol, srccol[i]);
 
             if (mapto == -1 && ndestcol < 256) {
                 /* add the color */
@@ -154,7 +134,7 @@ merge_colormap_if_possible(Gif_Colormap *dest, Gif_Colormap *src)
                 goto local_colormap_required;
 
             assert(mapto >= 0 && mapto < ndestcol);
-            assert(GIF_COLOREQ(&destcol[mapto], &srccol[i]));
+            assert(Gif_ColorEq(destcol[mapto], srccol[i]));
 
             srccol[i].pixel = mapto;
             destcol[mapto].haspixel = 1;

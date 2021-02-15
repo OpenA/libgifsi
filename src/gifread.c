@@ -365,16 +365,16 @@ read_image_data(Gif_Context *gctx, Gif_Reader *grr)
 }
 
 static Gif_Colormap *
-read_color_table(Gif_Reader *grr, int size)
+read_color_table(Gif_Reader *grr, const int ncol)
 {
-	Gif_Colormap *gfcm = Gif_NewColormap(size, size);
+	Gif_Colormap *gfcm = Gif_NewColormap(ncol, ncol);
 	if (gfcm != NULL) {
-		GIF_DEBUG(("colormap(%d) ", size));
-		for (Gif_Color *c = gfcm->col; size--; c++) {
-			c->gfc_red    = readUint8(grr);
-			c->gfc_green  = readUint8(grr);
-			c->gfc_blue   = readUint8(grr);
-			c->haspixel   = 0;
+		GIF_DEBUG(("colormap(%d) ", ncol));
+		for (int i = 0; i < ncol; i++) {
+			gfcm->col[i].R = readUint8(grr);
+			gfcm->col[i].G = readUint8(grr);
+			gfcm->col[i].B = readUint8(grr);
+			gfcm->col[i].haspixel = 0;
 		}
 	}
 	return gfcm;

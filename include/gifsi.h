@@ -184,9 +184,7 @@ void Gif_InitCompressInfo                                     (Gif_CompressInfo 
 //  Color object
 typedef struct {
 	unsigned char haspixel;  /* semantics assigned by user */
-	unsigned char gfc_red;   /* red component (0-255) */
-	unsigned char gfc_green; /* green component (0-255) */
-	unsigned char gfc_blue;  /* blue component (0-255) */
+	unsigned char R, G, B;   /* RGB color component (0-255) */
 	unsigned int  pixel;     /* semantics assigned by user */
 } Gif_Color;
 
@@ -199,26 +197,28 @@ struct Gif_Colormap {
 };
 
 //  Colormap construct, copy, destroy fn declare
-Gif_Colormap *Gif_NewColormap     (int, int);
-Gif_Colormap *Gif_NewColormapFrom (const Gif_Colormap *);
-bool          Gif_FillColormap          (Gif_Colormap *, int, int);
-void          Gif_InitColormap          (Gif_Colormap *);
-void          Gif_DeleteColormap        (Gif_Colormap *);
+Gif_Colormap *Gif_NewColormap  (int, int);
+Gif_Colormap *Gif_CopyColormap (const Gif_Colormap *);
+bool          Gif_InitColormap       (Gif_Colormap *, int, int);
+void          Gif_DeleteColormap     (Gif_Colormap *);
 
 //  Colormap getters/setters/eq declare
-#define GIF_COLOREQ(c1, c2)(\
-	(c1)->gfc_red   == (c2)->gfc_red   && \
-	(c1)->gfc_green == (c2)->gfc_green && \
-	(c1)->gfc_blue  == (c2)->gfc_blue )
+#define Gif_ColorEq(col1, col2)(\
+	col1.R == col2.R && \
+	col1.G == col2.G && \
+	col1.B == col2.B )
 
-#define GIF_SETCOLOR(c,r,g,b)(\
-	(c)->gfc_red   = (r),\
-	(c)->gfc_green = (g),\
-	(c)->gfc_blue  = (b))
+#define Gif_SetColor(col,r,g,b)\
+	col.R = r,\
+	col.G = g,\
+	col.B = b
+
+#define Gif_FindColor(cm,sc) Gif_SearchColor(cm->col, cm->ncol, sc)
+#define Gif_AddColor(cm,pc) (void)Gif_PutColor(cm, -1, pc)
 
 //  Colormap others methods declare
-int Gif_FindColor (Gif_Colormap *, Gif_Color *);
-int Gif_AddColor  (Gif_Colormap *, Gif_Color *, int look_from);
+int  Gif_SearchColor (const Gif_Color *, const int, Gif_Color);
+int  Gif_PutColor    (   Gif_Colormap *,       int, Gif_Color);
 
 
 // Comment class
@@ -350,7 +350,6 @@ void     Gif_Debug(char *x, ...);
 /* Legacy */
 #define Gif_CopyStreamSkeleton Gif_NewStreamFrom
 #define Gif_NewFullColormap    Gif_NewColormap
-#define Gif_CopyColormap       Gif_NewColormapFrom
 #define Gif_ImageNumber        Gif_GetImageNum
 
 #define Gif_New(t)         (    (t*) malloc(            sizeof(t)      ))

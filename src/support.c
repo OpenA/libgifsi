@@ -289,8 +289,7 @@ const char* debug_color_str(const Gif_Color* gfc) {
     static int whichbuf = 0;
     static char buf[4][8];
     whichbuf = (whichbuf + 1) % 4;
-    sprintf(buf[whichbuf], "#%02X%02X%02X",
-            gfc->gfc_red, gfc->gfc_green, gfc->gfc_blue);
+    sprintf(buf[whichbuf], "#%02X%02X%02X", gfc->R, gfc->G, gfc->B);
     return buf[whichbuf];
 }
 
@@ -352,8 +351,8 @@ colormap_info(FILE *where, Gif_Colormap *gfcm, const char *prefix)
     fputs(prefix, where);
     for (i = 0; i < COLORMAP_COLS && which < gfcm->ncol; i++, which += nrows) {
       if (i) fputs("    ", where);
-      fprintf(where, " %3d: #%02X%02X%02X", which, gfcm->col[which].gfc_red,
-              gfcm->col[which].gfc_green, gfcm->col[which].gfc_blue);
+      fprintf(where, " %3d: #%02X%02X%02X", which, gfcm->col[which].R,
+              gfcm->col[which].G, gfcm->col[which].B);
     }
     fputc('\n', where);
   }
@@ -826,9 +825,7 @@ parse_color(Clp_Parser *clp, const char *arg, int complain, void *thunk)
   if (red < 0 || green < 0 || blue < 0
       || red > 255 || green > 255 || blue > 255)
     goto error;
-  parsed_color.gfc_red = red;
-  parsed_color.gfc_green = green;
-  parsed_color.gfc_blue = blue;
+  Gif_SetColor(parsed_color, red, green, blue);
   parsed_color.haspixel = 0;
   return 1;
 
@@ -908,9 +905,7 @@ read_text_colormap(FILE *f, const char *name)
         lerror(name, "maximum 256 colors allowed in colormap");
         break;
       } else {
-        col[ncol].gfc_red = red;
-        col[ncol].gfc_green = green;
-        col[ncol].gfc_blue = blue;
+        Gif_SetColor(col[ncol], red, green, blue);
         ncol++;
       }
     }
@@ -1099,7 +1094,7 @@ merger_flatten(Gt_Frameset *fset, int f1, int f2)
 
 
 static int
-find_color_or_error(Gif_Color *color, Gif_Stream *gfs, Gif_Image *gfi,
+find_color_or_error(Gif_Color color, Gif_Stream *gfs, Gif_Image *gfi,
                     const char *color_context)
 {
   Gif_Colormap *gfcm = gfs->global;
@@ -1107,9 +1102,9 @@ find_color_or_error(Gif_Color *color, Gif_Stream *gfs, Gif_Image *gfi,
   if (gfi && gfi->local)
     gfcm = gfi->local;
 
-  if (color->haspixel == 2) {   /* have pixel value, not color */
-    if (!gfcm || color->pixel < (uint32_t)gfcm->ncol)
-      return color->pixel;
+  if (color.haspixel == 2) {   /* have pixel value, not color */
+    if (!gfcm || color.pixel < (uint32_t)gfcm->ncol)
+      return color.pixel;
     else {
       if (color_context)
           lwarning(gfs->landmark, "%s color out of range", color_context);
@@ -1173,7 +1168,7 @@ set_background(Gif_Stream *gfs, Gt_OutputData *output_data)
                 want_transparent = 1;
             else if (merger[i]->transparent.haspixel) {
                 if (background.haspixel
-                    && !GIF_COLOREQ(&background, &merger[i]->transparent))
+                    && !Gif_ColorEq(background, merger[i]->transparent))
                     conflict = 1;
                 else {
                     background = merger[i]->transparent;
@@ -1202,7 +1197,7 @@ set_background(Gif_Stream *gfs, Gt_OutputData *output_data)
     }
 
   search:
-    i = find_color_or_error(&background, gfs, 0, "background");
+    i = find_color_or_error(background, gfs, 0, "background");
     gfs->background = (i >= 0 ? i : 0);
 }
 
@@ -1444,7 +1439,7 @@ apply_frame_transparent(Gif_Image *gfi, Gt_Frame *fr)
         gfi->transparent = -1;
     else if (fr->transparent.haspixel) {
         gfi->transparent =
-            find_color_or_error(&fr->transparent, fr->stream, gfi,
+            find_color_or_error(fr->transparent, fr->stream, gfi,
                                 "transparent");
         if (gfi->transparent < 0)
             fr->transparent.haspixel = 0;
@@ -1718,8 +1713,8 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
   if (dest->global->ncol == 0) {
       for (i = 0; i != dest->nimages; ++i)
           if (!dest->images[i]->local) {
-              GIF_SETCOLOR(&dest->global->col[0], 0, 0, 0);
-              GIF_SETCOLOR(&dest->global->col[1], 255, 255, 255);
+              Gif_SetColor(dest->global->col[0], 0, 0, 0);
+              Gif_SetColor(dest->global->col[1], 255, 255, 255);
               dest->global->ncol = 2;
               break;
           }

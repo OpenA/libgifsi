@@ -23,22 +23,14 @@ unsigned short *gamma_tables[2] = {
 /* return the gamma transformation of `*gfc` */
 kcolor kc_Make8g(const Gif_Color gfc)
 {
-	kcolor kc = KC_Set8g(gamma_tables[0],
-	  gfc.gfc_red,
-	  gfc.gfc_green,
-	  gfc.gfc_blue
-	);
+	kcolor kc = KC_Set8g(gamma_tables[0], gfc.R, gfc.G, gfc.B);
 	return kc;
 }
 
-kcolor kc_MakeUc(const Gif_Color gfc)
+static inline void unmark_pixels(Gif_Colormap *gfcm)
 {
-	kcolor kc = KC_Set(
-	  (gfc.gfc_red   << 7) + (gfc.gfc_red   >> 1),
-	  (gfc.gfc_green << 7) + (gfc.gfc_green >> 1),
-	  (gfc.gfc_blue  << 7) + (gfc.gfc_blue  >> 1)
-	);
-	return kc;
+	for (int i = 0; i < gfcm->ncol; i++)
+		gfcm->col[i].haspixel = 0;
 }
 
 const char *kc_debug_str(kcolor x) {
@@ -725,11 +717,8 @@ void kd3_add_transformed(kd3_tree *kd3, const kcolor *k)
 
 void kd3_add8g(kd3_tree *kd3, const Gif_Color gfc)
 {
-	kcolor k = KC_Set8g(gamma_tables[0],
-		gfc.gfc_red,
-		gfc.gfc_green,
-		gfc.gfc_blue
-	);
+	kcolor k = KC_Set8g(gamma_tables[0], gfc.R, gfc.G, gfc.B);
+
 	if (kd3->transform)
 		kd3->transform(&k);
 	kd3_add_transformed(kd3, &k);
@@ -955,11 +944,8 @@ int kd3_closest_transformed(kd3_tree *kd3, const kcolor *k, unsigned *dist_store
 
 int kd3_closest8g(kd3_tree *kd3, const Gif_Color gfc)
 {
-	kcolor k = KC_Set8g(gamma_tables[0],
-		gfc.gfc_red,
-		gfc.gfc_green,
-		gfc.gfc_blue
-	);
+	kcolor k = KC_Set8g(gamma_tables[0], gfc.R, gfc.G, gfc.B);
+
 	if (kd3->transform)
 		kd3->transform(&k);
 	return kd3_closest_transformed(kd3, &k, NULL);
@@ -1078,9 +1064,7 @@ void colormap_image_floyd_steinberg(
 			/* find desired new color */
 			Gif_Color old_c = old_cm->col[*data];
 			kcolor use = KC_Set8g(gamma_tables[0],
-				old_c.gfc_red,
-				old_c.gfc_green,
-				old_c.gfc_blue
+				old_c.R, old_c.G, old_c.B
 			);
 			if (kd3->transform)
 				kd3->transform(&use);
@@ -1351,11 +1335,8 @@ static void set_ordered_dither_plan(
 ) {
 	unsigned i, d;
 	wkcolor err      = KC_Set(0,0,0);
-	kcolor cur, want = KC_Set8g(gamma_tables[0],
-		gfc->gfc_red,
-		gfc->gfc_green,
-		gfc->gfc_blue
-	);
+	kcolor cur, want = KC_Set8g(gamma_tables[0], gfc->R, gfc->G, gfc->B);
+
 	if (kd3->transform)
 		kd3->transform(&want);
 
@@ -1434,10 +1415,6 @@ static void colormap_image_ordered(
 	int i, *olums = Gif_NewArray(int, kd3->nitems);
 	unsigned short x, y;
 
-	/* Initialize colors */
-	for (i = 0; i < old_cm->ncol; i++)
-		old_cm->col[i].haspixel = 0;
-
 	/* Initialize luminances, create luminance sorter */
 	for (i = 0; i < kd3->nitems; i++)
 		olums[i] = kc_luminance(&kd3->ks[i]);
@@ -1492,12 +1469,12 @@ static bool try_assign_transparency(
 	if (old_cm)
 		transp_value = old_cm->col[transparent];
 	else
-		GIF_SETCOLOR(&transp_value, 0, 0, 0);
+		Gif_SetColor(transp_value, 0, 0, 0);
 
   /* look for an unused pixel in the existing colormap; prefer the same color
      we had */
 	for (i = 0; i < *new_ncol; i++) {
-		if (histogram[i] == 0 && GIF_COLOREQ(&transp_value, &new_cm->col[i])) {
+		if (histogram[i] == 0 && Gif_ColorEq(transp_value, new_cm->col[i])) {
 			new_transparent = i;
 			goto found;
 		}
@@ -1547,9 +1524,9 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 {
 	kd3_tree kd3;
 	Gif_Color *new_col = new_cm->col;
-	int new_ncol = new_cm->ncol, new_gray;
-	int imagei, j;
-	int compress_new_cm = 1;
+	int new_ncol = new_cm->ncol;
+	unsigned i, j;
+	bool compress_new_cm = true, new_gray = true;
 
 	/* make sure colormap has enough space */
 	if (new_cm->capacity < 256) {
@@ -1566,26 +1543,31 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 		new_col[j].pixel = 0;
 
 	/* initialize kd3 tree */
-	new_gray = 1;
-	for (j = 0; new_gray && j < new_cm->ncol; j++) {
-		if (new_col[j].gfc_red != new_col[j].gfc_green || new_col[j].gfc_red != new_col[j].gfc_blue)
-			new_gray = 0;
+	for (j = 0; j < new_cm->ncol; j++) {
+		if (new_col[j].R != new_col[j].G ||
+			new_col[j].R != new_col[j].B) {
+			new_gray = false;
+			break;
+		}
 	}
 	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_cm);
 
-	for (imagei = 0; imagei < gfs->nimages; imagei++) {
-		Gif_Image *gfi = gfs->images[imagei];
-		Gif_Colormap *gfcm = gfi->local ? gfi->local : gfs->global;
-		int only_compressed = (gfi->img == 0);
+	for (i = 0; i < gfs->nimages; i++) {
+
+		Gif_Image    *gfi  =  gfs->images[i];
+		Gif_Colormap *gfcm =  gfi->local ?: gfs->global;
+		bool was_compress  = !gfi->img;
 
 		if (gfcm) {
 			/* If there was an old colormap, change the image data */
 			unsigned char *new_data = Gif_NewArray(unsigned char, (unsigned)gfi->width * (unsigned)gfi->height);
 			unsigned histogram[256];
-			unmark_colors(new_cm);
-			unmark_colors(gfcm);
 
-			if (only_compressed)
+			/* Initialize colors */
+			unmark_pixels(new_cm);
+			unmark_pixels(gfcm);
+
+			if (was_compress)
 				Gif_UncompressImage(gfs, gfi);
 
 			kd3_enable_all(&kd3);
@@ -1609,7 +1591,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 				new_col[gfi->transparent].pixel += (unsigned)gfi->width * (unsigned)gfi->height / 8;
 		} else {
 			/* Can't compress new_cm afterwards if we didn't actively change colors over */
-			compress_new_cm = 0;
+			compress_new_cm = false;
 		}
 
 		if (gfi->local) {
@@ -1618,7 +1600,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 		}
 
 		/* 1.92: recompress *after* deleting the local colormap */
-		if (gfcm && only_compressed) {
+		if (gfcm && was_compress) {
 			Gif_FullCompressImage(gfs, gfi, &gif_write_info);
 			Gif_ReleaseUncompressedImage(gfi);
 		}
@@ -1645,17 +1627,16 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 	/* We may have used only a subset of the colors in new_cm. We try to store
 	   only that subset, just as if we'd piped the output of 'gifsicle
 	   --use-colormap=X' through 'gifsicle' another time. */
-	gfs->global = Gif_CopyColormap(new_cm);
-
-	for (j = 0; j < new_cm->ncol; ++j)
-		gfs->global->col[j].haspixel = 0;
+	unmark_pixels(
+		(gfs->global = Gif_CopyColormap(new_cm))
+	);
 
 	if (compress_new_cm) {
 		/* only bother to recompress if we'll get anything out of it */
-		compress_new_cm = 0;
+		compress_new_cm = false;
 		for (j = 0; j < new_cm->ncol - 1; j++) {
 			if (new_col[j].pixel == 0 || new_col[j].pixel < new_col[j + 1].pixel) {
-				compress_new_cm = 1;
+				compress_new_cm = true;
 				break;
 			}
 		}
@@ -1683,21 +1664,23 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 		/* map the image data, transparencies, and background */
 		if (gfs->background < gfs->global->ncol)
 			gfs->background = map[gfs->background];
-		for (imagei = 0; imagei < gfs->nimages; imagei++) {
-			Gif_Image *gfi = gfs->images[imagei];
-			int only_compressed = (gfi->img == 0);
-			unsigned size;
-			unsigned char *data;
-			if (only_compressed)
+		for (i = 0; i < gfs->nimages; i++) {
+
+			Gif_Image *gfi    =  gfs->images[i];
+			bool was_compress = !gfi->img;
+
+			if (was_compress)
 				Gif_UncompressImage(gfs, gfi);
 
-			data = gfi->image_data;
-			for (size = (unsigned)gfi->width * (unsigned)gfi->height; size > 0; size--, data++)
-				*data = map[*data];
+			const unsigned size = (unsigned)gfi->width * (unsigned)gfi->height;
+			unsigned char *data = gfi->image_data;
+
+			for (j = 0; j < size; j++)
+				data[j] = map[data[j]];
 			if (gfi->transparent >= 0)
 				gfi->transparent = map[gfi->transparent];
 
-			if (only_compressed) {
+			if (was_compress) {
 				Gif_FullCompressImage(gfs, gfi, &gif_write_info);
 				Gif_ReleaseUncompressedImage(gfi);
 			}

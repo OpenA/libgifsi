@@ -182,7 +182,7 @@ gfc_lookup(Gif_CodeTable *gfc, Gif_Node *node, unsigned char suffix)
 typedef struct gfc_rgbdiff {signed short r, g, b;} gfc_rgbdiff;
 
 /* Difference (MSE) between given color indexes + dithering error */
-static inline unsigned int color_diff(Gif_Color a, Gif_Color b, int a_transparent, int b_transparent, gfc_rgbdiff dither)
+static inline unsigned int color_diff(Gif_Color aCol, Gif_Color bCol, int a_transparent, int b_transparent, gfc_rgbdiff dither)
 {
 	unsigned int dith, undith;
 
@@ -194,28 +194,28 @@ static inline unsigned int color_diff(Gif_Color a, Gif_Color b, int a_transparen
 	if (a_transparent) return 0;
 
 	/* squared error with or without dithering. */
-	dith = (a.gfc_red   - b.gfc_red   + dither.r) * (a.gfc_red   - b.gfc_red   + dither.r)
-	     + (a.gfc_green - b.gfc_green + dither.g) * (a.gfc_green - b.gfc_green + dither.g)
-	     + (a.gfc_blue  - b.gfc_blue  + dither.b) * (a.gfc_blue  - b.gfc_blue  + dither.b);
+	dith = (aCol.R - bCol.R + dither.r) * (aCol.R - bCol.R + dither.r)
+	     + (aCol.G - bCol.G + dither.g) * (aCol.G - bCol.G + dither.g)
+	     + (aCol.B - bCol.B + dither.b) * (aCol.B - bCol.B + dither.b);
 
-	undith = (a.gfc_red   - b.gfc_red   + dither.r / 2) * (a.gfc_red   - b.gfc_red   + dither.r / 2)
-	       + (a.gfc_green - b.gfc_green + dither.g / 2) * (a.gfc_green - b.gfc_green + dither.g / 2)
-	       + (a.gfc_blue  - b.gfc_blue  + dither.b / 2) * (a.gfc_blue  - b.gfc_blue  + dither.b / 2);
+	undith = (aCol.R - bCol.R + dither.r / 2) * (aCol.R - bCol.R + dither.r / 2)
+	       + (aCol.G - bCol.G + dither.g / 2) * (aCol.G - bCol.G + dither.g / 2)
+	       + (aCol.B - bCol.B + dither.b / 2) * (aCol.B - bCol.B + dither.b / 2);
 
 	/* Smaller error always wins, under assumption that dithering is not required and it's only done opportunistically */
 	return dith < undith ? dith : undith;
 }
 
 /* difference between expected color a+dither and color b (used to calculate dithering required) */
-static inline gfc_rgbdiff diffused_difference(Gif_Color a, Gif_Color b, int a_transparent, int b_transparent, gfc_rgbdiff dither)
+static inline gfc_rgbdiff diffused_difference(Gif_Color aCol, Gif_Color bCol, int a_transparent, int b_transparent, gfc_rgbdiff dither)
 {
 	gfc_rgbdiff d;
 	if (a_transparent || b_transparent) {
 		d.r = d.g = d.b = 0;
 	} else {
-		d.r = a.gfc_red   - b.gfc_red   + dither.r * 3 / 4;
-		d.g = a.gfc_green - b.gfc_green + dither.g * 3 / 4;
-		d.b = a.gfc_blue  - b.gfc_blue  + dither.b * 3 / 4;
+		d.r = aCol.R - bCol.R + dither.r * 3 / 4;
+		d.g = aCol.G - bCol.G + dither.g * 3 / 4;
+		d.b = aCol.B - bCol.B + dither.b * 3 / 4;
 	}
 	return d;
 }
@@ -730,9 +730,9 @@ write_color_table(Gif_Colormap *gfcm, int totalcol, Gif_Writer *grr)
 	int i, limit = _MIN(gfcm->ncol, totalcol);
 
 	for (i = 0; i < limit; i++) {
-		writeUint8(c[i].gfc_red  , grr);
-		writeUint8(c[i].gfc_green, grr);
-		writeUint8(c[i].gfc_blue , grr);
+		writeUint8(c[i].R, grr);
+		writeUint8(c[i].G, grr);
+		writeUint8(c[i].B, grr);
 	}
 	/* Pad out colormap with black. */
 	for (; i < totalcol; i++) {

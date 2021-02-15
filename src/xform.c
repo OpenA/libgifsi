@@ -102,7 +102,7 @@ color_change_transformer(Gif_Colormap *gfcm, void *thunk)
   for (i = 0; i < gfcm->ncol; i++)
     for (change = first_change; change; change = change->next) {
       if (!change->old_color.haspixel)
-        have = GIF_COLOREQ(&gfcm->col[i], &change->old_color);
+        have = Gif_ColorEq(gfcm->col[i], change->old_color);
       else
         have = (change->old_color.pixel == (uint32_t)i);
 
@@ -175,7 +175,7 @@ pipe_color_transformer(Gif_Colormap *gfcm, void *thunk)
   Gif_DeleteArray(new_command);
 
   for (i = 0; i < gfcm->ncol; i++)
-    fprintf(f, "%d %d %d\n", col[i].gfc_red, col[i].gfc_green, col[i].gfc_blue);
+    fprintf(f, "%d %d %d\n", col[i].R, col[i].G, col[i].B);
 
   errno = 0;
   status = pclose(f);
@@ -724,7 +724,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
             break;
         kcdiversity_choose(&div, chosen, 0);
         gfc = kc_togfcg(&kch.h[chosen].ka.k);
-        Gif_AddColor(gfcm, &gfc, gfcm->ncol);
+        Gif_AddColor(gfcm, gfc);
         kd3_add8g(sctx->kd3, gfc);
         ++nadded;
     }

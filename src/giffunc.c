@@ -30,6 +30,7 @@ void Gif_InitStream(Gif_Stream *gfs)
 	gfs->loopcount = -1;
 	gfs->end_comment = NULL;
 	gfs->end_extension_list = NULL;
+	gfs->has_local_cmaps = false;
 	gfs->errors = 0;
 	gfs->user_flags = 0;
 	gfs->refcount = 0;
@@ -364,7 +365,7 @@ Gif_NewCompressInfo(void) {
 
 void Gif_InitCompressInfo(Gif_CompressInfo *gcinfo)
 {
-	gcinfo->flags = gcinfo->loss = 0;
+	gcinfo->flags = gcinfo->lossy = 0;
 }
 
 

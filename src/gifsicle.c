@@ -920,13 +920,9 @@ do_colormap_change(Gif_Stream *gfs)
     /* set up the histogram */
     {
       uint32_t ntransp;
-      int i, any_locals = 0;
-      for (i = 0; i < gfs->nimages; i++)
-        if (gfs->images[i]->local)
-          any_locals = 1;
       kchist_make(&kch, gfs, &ntransp);
       if (kch.n <= active_output_data.colormap_size
-          && !any_locals
+          && !gfs->has_local_cmaps
           && !active_output_data.colormap_fixed) {
         warning(1, "trivial adaptive palette (only %d colors in source)", kch.n);
         kchist_cleanup(&kch);
@@ -2133,9 +2129,9 @@ main(int argc, char *argv[])
 
     case LOSSY_OPT:
       if (clp->have_val)
-        gif_write_info.loss = clp->val.i;
+        gif_write_info.lossy = clp->val.i;
       else
-        gif_write_info.loss = 20;
+        gif_write_info.lossy = 20;
       break;
 
       /* RANDOM OPTIONS */

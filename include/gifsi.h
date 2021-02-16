@@ -68,6 +68,8 @@ struct Gif_Stream {
 	unsigned short background;  /* 256 means no background */
 	unsigned short screen_width, screen_height;
 
+	bool has_local_cmaps;
+
 	int loopcount, refcount;    /* -1 means no loop count */
 
 	unsigned int errors;
@@ -168,8 +170,7 @@ typedef void (*Gif_ReadErrorHandler)(
 );
 
 typedef struct {
-	int flags, loss;
-	void *padding[7];
+	int flags, lossy;
 } Gif_CompressInfo;
 
 Gif_CompressInfo * Gif_NewCompressInfo(void);
@@ -280,7 +281,7 @@ enum Gif_Dither {
 typedef struct Gif_DitherPlan Gif_DitherPlan;
 typedef enum   Gif_Dither     Gif_Dither;
 typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
-                              void *, unsigned *, const unsigned char *);
+                              void *, unsigned *, Gif_DitherPlan *);
 
 struct Gif_DitherPlan {
 	unsigned char *matrix;
@@ -294,8 +295,8 @@ void Gif_FreeDitherPlan(Gif_DitherPlan *);
 #define GIF_DIVERSITY_BLEND             1
 #define GIF_DIVERSITY_MEDIAN_CUT        2
 
-void Gif_FullQuantizeColors  (Gif_Stream *, Gif_Colormap *, Gif_DitherPlan *);
-void Gif_FullColorsDiversity (Gif_Stream *, unsigned int  , Gif_DitherPlan *);
+Gif_Colormap *Gif_ColormapDiversity   (Gif_Stream *, unsigned, unsigned, Gif_DitherPlan *);
+void          Gif_FullQuantizeColors  (Gif_Stream *, Gif_Colormap *    , Gif_DitherPlan *);
 
 
 /** READING AND WRITING **/

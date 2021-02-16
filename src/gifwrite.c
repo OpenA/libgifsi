@@ -506,9 +506,9 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	}
 
 	/* Find the next code to output. */
-	if (grr->gcinfo.loss) {
+	if (grr->gcinfo.lossy) {
 		gfc_rgbdiff zero_diff = {0, 0, 0};
-		struct selected_node t = gfc_lookup_lossy(gfc, gfcm, gfi, pos, NULL, 0, zero_diff, grr->gcinfo.loss * 10);
+		struct selected_node t = gfc_lookup_lossy(gfc, gfcm, gfi, pos, NULL, 0, zero_diff, grr->gcinfo.lossy * 10);
 
 		work_node = t.node;
 		run = t.pos - pos;

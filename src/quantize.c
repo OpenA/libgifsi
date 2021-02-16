@@ -674,6 +674,27 @@ Gif_Colormap *colormap_flat_diversity(kchist *kch, Gt_OutputData *od)
 	return colormap_diversity(kch, od, 0);
 }
 
+Gif_Colormap *Gif_ColormapDiversity(Gif_Stream *gfs, unsigned adapt_size, unsigned div_type, Gif_DitherPlan *dp) {
+	
+	Gif_Colormap *gfcm = Gif_NewColormap(adapt_size, 256);
+	unsigned ntransp;
+	kchist kch;
+
+	kchist_make(&kch, gfs, &ntransp);
+
+	if (adapt_size > kch.n)
+		adapt_size = kch.n;
+
+	if (adapt_size > 2 && adapt_size < kch.n && kch.n <= 265 && ntransp > 0)
+		adapt_size--;
+	
+	if (div_type == GIF_DIVERSITY_MEDIAN_CUT) {
+		//colormap_median_cut();
+	} else {
+
+	}
+}
+
 
 /*
  * kd_tree allocation and deallocation
@@ -958,7 +979,7 @@ void colormap_image_posterize(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	const unsigned char *_
+	Gif_DitherPlan *dp
 ) {
 	Gif_Color *col = old_cm->col;
 	int i, ncol = old_cm->ncol;
@@ -994,7 +1015,7 @@ void colormap_image_floyd_steinberg(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	const unsigned char *_
+	Gif_DitherPlan *dp
 ) {
 	static int *random_values = 0;
 
@@ -1191,7 +1212,7 @@ static bool kc_line_closest(
 	return true;
 }
 
-static double kc_plane_closest(
+static bool kc_plane_closest(
 	const kcolor *p0, const kcolor *p1,
 	const kcolor *p2, const kcolor *ref,
 	double       *t,  unsigned     *dist
@@ -1404,11 +1425,10 @@ static void colormap_image_ordered(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	const unsigned char *matrix
+	Gif_DitherPlan *dp
 ) {
-	unsigned char mw = matrix[0],
-	              mh = matrix[1],
-	           nplan = matrix[2];
+	unsigned char mw = dp->matrix[0], nplan = dp->matrix[2],
+	              mh = dp->matrix[1], ncols = dp->matrix[3];
 
 	/* Written with reference to Joel Ylilouma's versions. */
 	unsigned char *plan = Gif_NewArray(unsigned char, nplan * old_cm->ncol);
@@ -1421,7 +1441,7 @@ static void colormap_image_ordered(
 
 	/* Do the image! */
 	if ((mw & (mw - 1)) == 0 && (mh & (mh - 1)) == 0 && (nplan & (nplan - 1)) == 0) {
-		pow2_ordered_dither(gfi, all_new_data, old_cm, kd3, histogram, matrix, plan, olums);
+		pow2_ordered_dither(gfi, all_new_data, old_cm, kd3, histogram, dp->matrix, plan, olums);
 	} else {
 		for (y = 0; y < gfi->height; y++) {
 			unsigned char *new_data, *thisplan;
@@ -1432,10 +1452,10 @@ static void colormap_image_ordered(
 				if (pix != gfi->transparent) {
 					thisplan = &plan[nplan * pix];
 					if (!old_cm->col[pix].haspixel)
-						set_ordered_dither_plan(thisplan, nplan, matrix[3],
+						set_ordered_dither_plan(thisplan, nplan, ncols,
 						                        &old_cm->col[pix], kd3, olums);
-					i = matrix[4 +  (x + gfi->left) % mw
-					             + ((y + gfi->top ) % mh) * mw];
+					i = dp->matrix[4 +  (x + gfi->left) % mw
+					                 + ((y + gfi->top ) % mh) * mw];
 					new_data[x] = thisplan[i];
 					histogram[new_data[x]]++;
 				}
@@ -1574,7 +1594,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 			do {
 				for (j = 0; j < 256; j++)
 					histogram[j] = 0;
-				dp->doWork(gfi, new_data, gfcm, &kd3, histogram, dp->matrix);
+				dp->doWork(gfi, new_data, gfcm, &kd3, histogram, dp);
 			} while (try_assign_transparency(gfi, gfcm, new_data, new_cm, &new_ncol,
 											 &kd3, histogram));
 

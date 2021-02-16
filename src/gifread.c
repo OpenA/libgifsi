@@ -514,14 +514,13 @@ Gif_FullUncompressImage(Gif_Stream* gfs, Gif_Image* gfi,
 }
 
 static int
-read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Image *gfi,
-           unsigned short screen_width, unsigned short screen_height, int flags)
+read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, int flags)
 {
 	bool     ok     = true;
 	unsigned left   = (gfi->left   = readUint16(grr) );
 	unsigned top    = (gfi->top    = readUint16(grr) );
-	unsigned width  = (gfi->width  = readUint16(grr) ?: screen_width);
-	unsigned height = (gfi->height = readUint16(grr) ?: screen_height);
+	unsigned width  = (gfi->width  = readUint16(grr) ?: gfs->screen_width);
+	unsigned height = (gfi->height = readUint16(grr) ?: gfs->screen_height);
   /* Mainline GIF processors (Firefox, etc.) process missing width (height)
      as screen_width (screen_height). */
 
@@ -532,7 +531,7 @@ read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Image *gfi,
 		flags = 0;
 	}
 	/* If position out of range, error. */
-	if (left + width > 0xFFFF || top + height > 0xFFFF) {
+	if (left + width > GIF_MAX_SCREEN_WIDTH || top + height > GIF_MAX_SCREEN_HEIGHT) {
 		emit_read_error(gctx, 1, "image position and/or dimensions out of range");
 		Gif_MakeImageEmpty(gfi);
 		flags = 0;
@@ -544,6 +543,7 @@ read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Image *gfi,
 		int size = 1 << ((packed & 0x07) + 1);
 		if (!(gfi->local = read_color_table(grr, size)))
 			return false;
+		gfs->has_local_cmaps = true;
 		gfi->local->refcount = 1;
 	}
 
@@ -739,7 +739,7 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 
 			if (!Gif_AddImage(gfs, gfi))
 				goto done;
-			else if (!read_image(&gctx, grr, gfi, gfs->screen_width, gfs->screen_height, flags)) {
+			else if (!read_image(&gctx, grr, gfs, gfi, flags)) {
 				Gif_RemoveImage(gfs, gfs->nimages - 1);
 				gfi = NULL;
 				goto done;

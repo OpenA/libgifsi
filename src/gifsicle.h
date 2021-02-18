@@ -116,7 +116,6 @@ typedef struct {
   int colormap_size;
   Gif_Colormap *colormap_fixed;
   int colormap_algorithm;
-  int colormap_needs_transparency;
   int dither_type;
   int dither_data[3];
   const char* dither_name;
@@ -261,28 +260,14 @@ void    resize_stream(Gif_Stream* gfs, double new_width, double new_height,
 /*****
  * quantization
  **/
-#include "kcolor.h"
 
 /* gamma_tables[0]: array of 256 gamma-conversion values
    gamma_tables[1]: array of 256 reverse gamma-conversion values */
 extern unsigned short* gamma_tables[2];
 
-Gif_Colormap* colormap_blend_diversity(kchist* kch, Gt_OutputData* od);
-Gif_Colormap* colormap_flat_diversity(kchist* kch, Gt_OutputData* od);
-Gif_Colormap* colormap_median_cut(kchist* kch, Gt_OutputData* od);
-
 #define KC_GAMMA_SRGB                   0
 #define KC_GAMMA_NUMERIC                1
 void    kc_set_gamma(int type, double gamma);
-
-#define COLORMAP_DIVERSITY              0
-#define COLORMAP_BLEND_DIVERSITY        1
-#define COLORMAP_MEDIAN_CUT             2
-
-enum {
-    dither_none = 0, dither_default, dither_floyd_steinberg,
-    dither_ordered, dither_ordered_new
-};
 int     set_dither_type(Gt_OutputData* od, const char* name);
 
 /*****

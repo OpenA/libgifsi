@@ -913,43 +913,28 @@ do_colormap_change(Gif_Stream *gfs)
       Gif_FullQuantizeColors(gfs, active_output_data.colormap_fixed, &dp);
 
   if (active_output_data.colormap_size > 0) {
-    kchist kch;
-    Gif_Colormap* (*adapt_func)(kchist*, Gt_OutputData*);
+
+    char cm_alg = active_output_data.colormap_algorithm;
+    unsigned ncols = active_output_data.colormap_size;
+    int has_fixed_cm = active_output_data.colormap_fixed != NULL;
+
     Gif_Colormap *new_cm;
 
-    /* set up the histogram */
-    {
-      uint32_t ntransp;
-      kchist_make(&kch, gfs, &ntransp);
-      if (kch.n <= active_output_data.colormap_size
-          && !gfs->has_local_cmaps
-          && !active_output_data.colormap_fixed) {
-        warning(1, "trivial adaptive palette (only %d colors in source)", kch.n);
-        kchist_cleanup(&kch);
-        return;
-      }
-      active_output_data.colormap_needs_transparency = ntransp > 0;
-    }
+    if (ncols < 2 || ncols > 256)
+      fatal_error("adaptive palette size must be between 2 and 256");
 
-    switch (active_output_data.colormap_algorithm) {
-     case COLORMAP_DIVERSITY:
-      adapt_func = &colormap_flat_diversity;
-      break;
-     case COLORMAP_BLEND_DIVERSITY:
-      adapt_func = &colormap_blend_diversity;
-      break;
-     case COLORMAP_MEDIAN_CUT:
-      adapt_func = &colormap_median_cut;
-      break;
-     default:
-      fatal_error("can't happen");
-    }
+    if (cm_alg != COLORMAP_DIVERSITY_FLAT  &&
+        cm_alg != COLORMAP_DIVERSITY_BLEND &&
+        cm_alg != COLORMAP_MEDIAN_CUT)
+        fatal_error("wrong colormap algorithm");
 
-    new_cm = (*adapt_func)(&kch, &active_output_data);
-    Gif_FullQuantizeColors(gfs, new_cm, &dp);
+    new_cm = Gif_NewDiverseColormap(gfs, &ncols, cm_alg, &dp);
 
+    if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
+      warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
+    if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_cmaps)
+      Gif_FullQuantizeColors(gfs, new_cm, &dp);
     Gif_DeleteColormap(new_cm);
-    kchist_cleanup(&kch);
   }
   Gif_FreeDitherPlan(&dp);
 }
@@ -1259,7 +1244,7 @@ initialize_def_frame(void)
 
   def_output_data.colormap_size = 0;
   def_output_data.colormap_fixed = 0;
-  def_output_data.colormap_algorithm = COLORMAP_DIVERSITY;
+  def_output_data.colormap_algorithm = COLORMAP_DIVERSITY_FLAT;
   def_output_data.dither_type = DiP_Posterize;
   def_output_data.dither_name = "none";
   def_output_data.colormap_gamma_type = KC_GAMMA_SRGB;
@@ -1528,8 +1513,8 @@ main(int argc, char *argv[])
      (const char*) 0);
   Clp_AddStringListType
     (clp, COLORMAP_ALG_TYPE, 0,
-     "diversity", COLORMAP_DIVERSITY,
-     "blend-diversity", COLORMAP_BLEND_DIVERSITY,
+     "diversity", COLORMAP_DIVERSITY_FLAT,
+     "blend-diversity", COLORMAP_DIVERSITY_BLEND,
      "median-cut", COLORMAP_MEDIAN_CUT,
      (const char*) 0);
   Clp_AddStringListType

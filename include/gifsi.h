@@ -284,19 +284,20 @@ typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
                               void *, unsigned *, Gif_DitherPlan *);
 
 struct Gif_DitherPlan {
-	unsigned char *matrix;
+	Gif_Dither type;
+	const unsigned char *matrix;
 	_dith_work_fn  doWork;
 };
 
 void Gif_InitDitherPlan(Gif_DitherPlan *, Gif_Dither, unsigned char, unsigned char, unsigned);
 void Gif_FreeDitherPlan(Gif_DitherPlan *);
 
-#define GIF_DIVERSITY_FLAT              0
-#define GIF_DIVERSITY_BLEND             1
-#define GIF_DIVERSITY_MEDIAN_CUT        2
+#define COLORMAP_DIVERSITY_FLAT  0
+#define COLORMAP_DIVERSITY_BLEND 1
+#define COLORMAP_MEDIAN_CUT      2
 
-Gif_Colormap *Gif_ColormapDiversity   (Gif_Stream *, unsigned, unsigned, Gif_DitherPlan *);
-void          Gif_FullQuantizeColors  (Gif_Stream *, Gif_Colormap *    , Gif_DitherPlan *);
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, unsigned *ncol, char alg, Gif_DitherPlan *);
+void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap, Gif_DitherPlan *);
 
 
 /** READING AND WRITING **/

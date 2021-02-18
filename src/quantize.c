@@ -335,31 +335,15 @@ typedef struct {
 	unsigned pixel;
 } adaptive_slot;
 
-Gif_Colormap *colormap_median_cut(kchist *kch, Gt_OutputData *od)
+static void colormap_median_cut(kchist *kch, Gif_Colormap *gfcm)
 {
-	int adapt_size = od->colormap_size;
-	adaptive_slot *slots = Gif_NewArray(adaptive_slot, adapt_size);
-	Gif_Colormap *gfcm = Gif_NewFullColormap(adapt_size, 256);
+	adaptive_slot *slots = Gif_NewArray(adaptive_slot, gfcm->ncol);
 	Gif_Color *adapt = gfcm->col;
 	int nadapt;
 	int i, j, k;
 
-	/* This code was written with reference to ppmquant by Jef Poskanzer,
-       part of the pbmplus package. */
-
-	if (adapt_size < 2 || adapt_size > 256)
-		fatal_error("adaptive palette size must be between 2 and 256");
-	if (adapt_size >= kch->n && !od->colormap_fixed)
-		warning(1, "trivial adaptive palette (only %d %s in source)",
-				kch->n, kch->n == 1 ? "color" : "colors");
-	if (adapt_size >= kch->n)
-		adapt_size = kch->n;
-
-	/* 0. remove any transparent color from consideration; reduce adaptive
-       palette size to accommodate transparency if it looks like that'll be
-       necessary */
-	if (adapt_size > 2 && adapt_size < kch->n && kch->n <= 265 && od->colormap_needs_transparency)
-		adapt_size--;
+  /* This code was written with reference to ppmquant by Jef Poskanzer,
+     part of the pbmplus package. */
 
 	/* 1. set up the first slot, containing all pixels. */
 	slots[0].first = 0;
@@ -369,7 +353,7 @@ Gif_Colormap *colormap_median_cut(kchist *kch, Gt_OutputData *od)
 		slots[0].pixel += kch->h[i].count;
 
 	/* 2. split slots until we have enough. */
-	for (nadapt = 1; nadapt < adapt_size; nadapt++) {
+	for (nadapt = 1; nadapt < gfcm->ncol; nadapt++) {
 		adaptive_slot *split = 0;
 		kcolor minc, maxc;
 		kchistitem *slice;
@@ -450,10 +434,7 @@ Gif_Colormap *colormap_median_cut(kchist *kch, Gt_OutputData *od)
 		kc.a[2] = (int)(px[2] / slots[i].pixel);
 		adapt[i] = kc_togfcg(&kc);
 	}
-
 	Gif_DeleteArray(slots);
-	gfcm->ncol = nadapt;
-	return gfcm;
 }
 
 void kcdiversity_init(kcdiversity *div, kchist *kch, int dodither)
@@ -591,11 +572,10 @@ static void colormap_diversity_do_blend(kcdiversity *div)
 	Gif_DeleteArray(di);
 }
 
-static Gif_Colormap *colormap_diversity(kchist *kch, Gt_OutputData *od, int blend)
+static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_DitherPlan *dp, bool do_blend)
 {
-	int adapt_size = od->colormap_size;
 	kcdiversity div;
-	Gif_Colormap *gfcm = Gif_NewFullColormap(adapt_size, 256);
+	bool do_dither = (bool)dp->type;
 	int nadapt = 0;
 	int chosen;
 
@@ -603,38 +583,16 @@ static Gif_Colormap *colormap_diversity(kchist *kch, Gt_OutputData *od, int blen
      with reference to XV's implementation of that algorithm by John Bradley
      <bradley@cis.upenn.edu> and Tom Lane <Tom.Lane@g.gp.cs.cmu.edu>. */
 
-	if (adapt_size < 2 || adapt_size > 256)
-		fatal_error("adaptive palette size must be between 2 and 256");
-	if (adapt_size > kch->n && !od->colormap_fixed)
-		warning(1, "trivial adaptive palette (only %d colors in source)", kch->n);
-	if (adapt_size > kch->n)
-		adapt_size = kch->n;
-
-  /* 0. remove any transparent color from consideration; reduce adaptive
-     palette size to accommodate transparency if it looks like that'll be
-     necessary */
-  /* It will be necessary to accommodate transparency if (1) there is
-     transparency in the image; (2) the adaptive palette isn't trivial; and
-     (3) there are a small number of colors in the image (arbitrary constant:
-     <= 265), so it's likely that most images will use most of the slots, so
-     it's likely there won't be unused slots. */
-	if (adapt_size > 2 && adapt_size < kch->n && kch->n <= 265 && od->colormap_needs_transparency)
-		adapt_size--;
-
-	/* blending has bad effects when there are very few colors */
-	if (adapt_size < 4)
-		blend = 0;
-
 	/* 1. initialize min_dist and sort the colors in order of popularity. */
-	kcdiversity_init(&div, kch, od->dither_type != dither_none);
+	kcdiversity_init(&div, kch, do_dither);
 
 	/* 2. choose colors one at a time */
-	for (nadapt = 0; nadapt < adapt_size; nadapt++) {
+	for (nadapt = 0; nadapt < gfcm->ncol; nadapt++) {
 		/* 2.1. choose the color to be added */
 		if (nadapt == 0 || (nadapt >= 10 && nadapt % 2 == 0))
 			/* 2.1a. want most popular unchosen color */
 			chosen = kcdiversity_find_popular(&div);
-		else if (od->dither_type == dither_none)
+		else if (!do_dither)
 			/* 2.1b. choose based on diversity from unchosen colors */
 			chosen = kcdiversity_find_diverse(&div, 0);
 		else {
@@ -650,10 +608,10 @@ static Gif_Colormap *colormap_diversity(kchist *kch, Gt_OutputData *od, int blen
 #endif
 			chosen = kcdiversity_find_diverse(&div, ditherweight);
 		}
-		kcdiversity_choose(&div, chosen, nadapt > 0 && nadapt < 64 && od->dither_type != dither_none);
+		kcdiversity_choose(&div, chosen, nadapt > 0 && nadapt < 64 && do_dither);
 	}
 	/* 3. make the new palette by choosing one color from each slot. */
-	if (blend)
+	if (do_blend)
 		colormap_diversity_do_blend(&div);
 
 	for (nadapt = 0; nadapt < div.nchosen; nadapt++)
@@ -661,38 +619,41 @@ static Gif_Colormap *colormap_diversity(kchist *kch, Gt_OutputData *od, int blen
 	gfcm->ncol = nadapt;
 
 	kcdiversity_cleanup(&div);
-	return gfcm;
 }
 
-Gif_Colormap *colormap_blend_diversity(kchist *kch, Gt_OutputData *od)
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, unsigned *ncol, char alg, Gif_DitherPlan *dp)
 {
-	return colormap_diversity(kch, od, 1);
-}
-
-Gif_Colormap *colormap_flat_diversity(kchist *kch, Gt_OutputData *od)
-{
-	return colormap_diversity(kch, od, 0);
-}
-
-Gif_Colormap *Gif_ColormapDiversity(Gif_Stream *gfs, unsigned adapt_size, unsigned div_type, Gif_DitherPlan *dp) {
-	
-	Gif_Colormap *gfcm = Gif_NewColormap(adapt_size, 256);
-	unsigned ntransp;
+	Gif_Colormap *gfcm;
+	unsigned ntransp, adapt_size = *ncol;
 	kchist kch;
 
+	/* set up the histogram */
 	kchist_make(&kch, gfs, &ntransp);
 
 	if (adapt_size > kch.n)
 		adapt_size = kch.n;
-
+  /* 0. remove any transparent color from consideration; reduce adaptive
+     palette size to accommodate transparency if it looks like that'll be
+     necessary */
+  /* It will be necessary to accommodate transparency if (1) there is
+     transparency in the image; (2) the adaptive palette isn't trivial; and
+     (3) there are a small number of colors in the image (arbitrary constant:
+     <= 265), so it's likely that most images will use most of the slots, so
+     it's likely there won't be unused slots. */
 	if (adapt_size > 2 && adapt_size < kch.n && kch.n <= 265 && ntransp > 0)
 		adapt_size--;
-	
-	if (div_type == GIF_DIVERSITY_MEDIAN_CUT) {
-		//colormap_median_cut();
-	} else {
 
+	*ncol = kch.n;
+	 gfcm = Gif_NewColormap(adapt_size, 256);
+
+	if (alg == COLORMAP_MEDIAN_CUT) {
+		colormap_median_cut(&kch, gfcm);
+	} else {
+		colormap_diversity(&kch, gfcm, dp, (
+			alg == COLORMAP_DIVERSITY_BLEND && adapt_size >= 4));
 	}
+	kchist_cleanup(&kch);
+	return gfcm;
 }
 
 
@@ -1540,37 +1501,37 @@ static bool try_assign_transparency(
 }
 
 
-void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPlan *dp)
+void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_DitherPlan *dp)
 {
 	kd3_tree kd3;
-	Gif_Color *new_col = new_cm->col;
-	int new_ncol = new_cm->ncol;
+	Gif_Color *new_col = new_colmap->col;
+	int new_ncol = new_colmap->ncol;
 	unsigned i, j;
 	bool compress_new_cm = true, new_gray = true;
 
 	/* make sure colormap has enough space */
-	if (new_cm->capacity < 256) {
+	if (new_colmap->capacity < 256) {
 		Gif_Color *x = Gif_NewArray(Gif_Color, 256);
 		memcpy(x, new_col, sizeof(Gif_Color) * new_ncol);
 		Gif_DeleteArray(new_col);
-		new_cm->col = new_col = x;
-		new_cm->capacity = 256;
+		new_colmap->col = new_col = x;
+		new_colmap->capacity = 256;
 	}
-	assert(new_cm->capacity >= 256);
+	assert(new_colmap->capacity >= 256);
 
 	/* new_col[j].pixel == number of pixels with color j in the new image. */
 	for (j = 0; j < 256; j++)
 		new_col[j].pixel = 0;
 
 	/* initialize kd3 tree */
-	for (j = 0; j < new_cm->ncol; j++) {
+	for (j = 0; j < new_ncol; j++) {
 		if (new_col[j].R != new_col[j].G ||
 			new_col[j].R != new_col[j].B) {
 			new_gray = false;
 			break;
 		}
 	}
-	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_cm);
+	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_colmap);
 
 	for (i = 0; i < gfs->nimages; i++) {
 
@@ -1584,7 +1545,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 			unsigned histogram[256];
 
 			/* Initialize colors */
-			unmark_pixels(new_cm);
+			unmark_pixels(new_colmap);
 			unmark_pixels(gfcm);
 
 			if (was_compress)
@@ -1595,7 +1556,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 				for (j = 0; j < 256; j++)
 					histogram[j] = 0;
 				dp->doWork(gfi, new_data, gfcm, &kd3, histogram, dp);
-			} while (try_assign_transparency(gfi, gfcm, new_data, new_cm, &new_ncol,
+			} while (try_assign_transparency(gfi, gfcm, new_data, new_colmap, &new_ncol,
 											 &kd3, histogram));
 
 			Gif_ReleaseUncompressedImage(gfi);
@@ -1626,10 +1587,10 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 		}
 	}
 
-  /* Set new_cm->ncol from new_ncol. We didn't update new_cm->ncol before so
+  /* Set new_colmap->ncol from new_ncol. We didn't update new_colmap->ncol before so
      the closest-color algorithms wouldn't see any new transparent colors.
      That way added transparent colors were only used for transparency. */
-	new_cm->ncol = new_ncol;
+	new_colmap->ncol = new_ncol;
 
 	/* change the background. I hate the background by now */
 	if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0) && gfs->global && gfs->background < gfs->global->ncol) {
@@ -1644,17 +1605,17 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 	Gif_DeleteColormap(gfs->global);
 	kd3_cleanup(&kd3);
 
-	/* We may have used only a subset of the colors in new_cm. We try to store
+	/* We may have used only a subset of the colors in new_colmap. We try to store
 	   only that subset, just as if we'd piped the output of 'gifsicle
 	   --use-colormap=X' through 'gifsicle' another time. */
 	unmark_pixels(
-		(gfs->global = Gif_CopyColormap(new_cm))
+		(gfs->global = Gif_CopyColormap(new_colmap))
 	);
 
 	if (compress_new_cm) {
 		/* only bother to recompress if we'll get anything out of it */
 		compress_new_cm = false;
-		for (j = 0; j < new_cm->ncol - 1; j++) {
+		for (j = 0; j < new_ncol - 1; j++) {
 			if (new_col[j].pixel == 0 || new_col[j].pixel < new_col[j + 1].pixel) {
 				compress_new_cm = true;
 				break;
@@ -1666,16 +1627,16 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_cm, Gif_DitherPla
 		int map[256];
 		/* Gif_CopyColormap copies the 'pixel' values as well */
 		new_col = gfs->global->col;
-		for (j = 0; j < new_cm->ncol; j++)
+		for (j = 0; j < new_ncol; j++)
 			new_col[j].haspixel = j;
 
 		/* sort based on popularity */
-		qsort(new_col, new_cm->ncol, sizeof(Gif_Color), popularity_sort_compare);
+		qsort(new_col, new_ncol, sizeof(Gif_Color), popularity_sort_compare);
 
 		/* set up the map and reduce the number of colors */
-		for (j = 0; j < new_cm->ncol; j++)
+		for (j = 0; j < new_ncol; j++)
 			map[new_col[j].haspixel] = j;
-		for (j = 0; j < new_cm->ncol; j++) {
+		for (j = 0; j < new_ncol; j++) {
 			if (!new_col[j].pixel) {
 				gfs->global->ncol = j;
 				break;
@@ -1803,6 +1764,7 @@ static unsigned char *make_halftone_matrix_triangular(int w, int h, int nc)
 void Gif_InitDitherPlan(Gif_DitherPlan *dp, Gif_Dither type, unsigned char w, unsigned char h, unsigned ncol)
 {
 	dp->matrix = NULL;
+	dp->type   = type;
 
 	if (type == DiP_Posterize) {
 		dp->doWork = (_dith_work_fn)colormap_image_posterize;
@@ -1823,11 +1785,9 @@ void Gif_InitDitherPlan(Gif_DitherPlan *dp, Gif_Dither type, unsigned char w, un
 			type == DiP_4x4_Ordered     ? DiMx_4X4_SIZE :
 			type == DiP_64x64_ReOrdered ? DiMx_64X64_SIZE : DiMx_8X8_SIZE
 		);
+		unsigned char *matrix = Gif_NewArray(unsigned char, size);
 
-		dp->doWork = (_dith_work_fn)colormap_image_ordered;
-		dp->matrix = Gif_NewArray(unsigned char, size);
-
-		memcpy(dp->matrix, (
+		memcpy(matrix, (
 			type == DiP_3x3_Ordered ? Dither_Matrix_o3x3 :
 			type == DiP_4x4_Ordered ? Dither_Matrix_o4x4 :
 			type == DiP_8x8_Ordered ? Dither_Matrix_o8x8 :
@@ -1835,8 +1795,11 @@ void Gif_InitDitherPlan(Gif_DitherPlan *dp, Gif_Dither type, unsigned char w, un
 			type == DiP_64x64_ReOrdered ? Dither_Matrix_ro64x64 : Dither_Matrix_halftone8
 		), size);
 
-		if (ncol >= 2 && h > 1 && h != dp->matrix[3])
-			dp->matrix[3] = h;
+		if (ncol >= 2 && h > 1 && h != matrix[3])
+			matrix[3] = h;
+
+		dp->doWork = (_dith_work_fn)colormap_image_ordered;
+		dp->matrix = matrix;
 	}
 }
 

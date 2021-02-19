@@ -111,7 +111,7 @@ merge_colormap_if_possible(Gif_Colormap *dest, Gif_Colormap *src)
             int mapto = (srccol[i].pixel < 256 ? (int)srccol[i].pixel : -1);
 
             if (mapto == -1)
-                mapto = Gif_SearchColor(destcol, ndestcol, srccol[i]);
+                mapto = Gif_IndexOfColor(destcol, ndestcol, srccol[i]);
 
             if (mapto == -1 && ndestcol < 256) {
                 /* add the color */
@@ -217,7 +217,7 @@ merge_comments(Gif_Comment *destc, Gif_Comment *srcc)
 
 
 static void merge_image_input_colors(uint8_t* inused, const Gif_Image* srci) {
-    int i, x, y, nleft = Gif_ImageColorBound(srci);
+    int i, x, y, nleft = Gif_GetImageColorBound(srci);
     for (i = 0; i != 256; ++i)
         inused[i] = 0;
     for (y = 0; y != srci->height && nleft > 0; ++y) {

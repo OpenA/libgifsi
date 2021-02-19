@@ -219,10 +219,10 @@ Gif_CopyColormap(const Gif_Colormap *src) {
 	return dest;
 }
 
-int Gif_SearchColor(const Gif_Color *cols, const int ncol, const Gif_Color c)
+int Gif_IndexOfColor(Gif_Color *arr, const int len, const Gif_Color col)
 {
-	for (int i = 0; i < ncol; i++) {
-		if (Gif_ColorEq(cols[i], c))
+	for (int i = 0; i < len; i++) {
+		if (Gif_ColorEq(arr[i], col))
 			return i;
 	}
 	return -1;
@@ -402,31 +402,21 @@ void Gif_Free(void* ptr) {
   Stream methods & working functions
 */
 Gif_Image *
-Gif_GetImage(const Gif_Stream *gfs, const unsigned inum)
+Gif_ImageByName(Gif_Image **arr, const int len, const char *name)
 {
-	return inum < gfs->nimages ? gfs->images[inum] : NULL;
-}
-
-Gif_Image *
-Gif_GetNamedImage(const Gif_Stream *gfs, const char *name)
-{
-	if (!name)
-		return gfs->nimages ? gfs->images[0] : NULL;
-	for (unsigned i = 0; i < gfs->nimages; i++) {
-		if (!gfs->images[i]->identifier)
+	for (int i = 0; i < len; i++) {
+		if (!arr[i]->identifier)
 			continue;
-		if (!strcmp(gfs->images[i]->identifier, name))
-			return gfs->images[i];
+		if (!strcmp(arr[i]->identifier, name))
+			return arr[i];
 	}
 	return NULL;
 }
 
-int Gif_GetImageNum(const Gif_Stream *gfs, const Gif_Image *gfi)
+int Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img)
 {
-	if (!gfs || !gfi)
-		return -1;
-	for (unsigned i = 0; i < gfs->nimages; i++) {
-		if (gfs->images[i] == gfi)
+	for (int i = 0; i < len; i++) {
+		if (arr[i] == img)
 			return i;
 	}
 	return -1;
@@ -500,11 +490,6 @@ void Gif_CalculateScreenSize(Gif_Stream *gfs, bool force)
 /*
   Image methods & working functions
 */
-int Gif_ImageColorBound(const Gif_Image* gfi) {
-	unsigned char compss = gfi->compressed ? gfi->compressed[0] : 0;
-	return (compss > 0 && compss < 8 ? 1 << compss : 256);
-}
-
 void Gif_ClipImage(Gif_Image *gfi, int left, int top, int width, int height)
 {
 	int new_width = gfi->width, new_height = gfi->height;

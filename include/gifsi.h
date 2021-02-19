@@ -90,15 +90,13 @@ bool        Gif_CopyStreamImages(const Gif_Stream *, Gif_Stream *);
 void        Gif_InitStream            (Gif_Stream *);
 void        Gif_DeleteStream          (Gif_Stream *);
 
-//  Stream getters/setters declare
-#define Gif_ScreenHeight(gfs) (gfs->screen_height)
-#define Gif_ScreenWidth(gfs)  (gfs->screen_width)
-#define Gif_ImageCount(gfs)   (gfs->nimages)
+//  Stream getters
+#define Gif_GetImagesCount(gfs)    (gfs->nimages)
+#define Gif_GetImageByIndex(gfs,i) (gfs->nimages <= i || i < 0 ? NULL :      gfs->images[i])
+#define Gif_GetImageByName(gfs,n)  (gfs->nimages <= 0          ? NULL : !n ? gfs->images[0] : Gif_ImageByName( gfs->images, gfs->nimages, n))
+#define Gif_GetIndexOfImage(gfs,m) (gfs->nimages <= 0 || !m    ?   -1                       : Gif_IndexOfImage(gfs->images, gfs->nimages, m))
 
 //  Stream others methods declare
-Gif_Image * Gif_GetImage        (const Gif_Stream *, const unsigned);
-Gif_Image * Gif_GetNamedImage   (const Gif_Stream *, const char *);
-int         Gif_GetImageNum     (const Gif_Stream *, const Gif_Image *);
 bool        Gif_AddExtension          (Gif_Stream *, Gif_Image *, Gif_Extension *);
 bool        Gif_AddImage              (Gif_Stream *, Gif_Image *);
 void        Gif_RemoveImage           (Gif_Stream *, unsigned);
@@ -145,15 +143,10 @@ bool        Gif_CopyImage       (const Gif_Image *, Gif_Image *);
 void        Gif_InitImage             (Gif_Image *);
 void        Gif_DeleteImage           (Gif_Image *);
 
-//  Image getters/setters declare
-#define Gif_ImageDelay(gfi)         (gfi->delay)
-#define Gif_ImageWidth(gfi)         (gfi->width)
-#define Gif_ImageHeight(gfi)        (gfi->height)
-#define Gif_ImageUserData(gfi)      (gfi->userdata)
-#define Gif_SetImageUserData(gfi,v) (gfi->userdata = v)
+//  Image getters
+#define Gif_GetImageColorBound(gfi) (gfi->compressed && gfi->compressed[0] > 0 && gfi->compressed[0] < 8 ? 1 << gfi->compressed[0] : 256)
 
 //  Image others methods declare
-int      Gif_ImageColorBound    (const Gif_Image *);
 void     Gif_ClipImage                (Gif_Image *, int, int, int, int);
 bool     Gif_SetUncompressedImage     (Gif_Image *, unsigned char *, void (*free_data)(void *), bool);
 bool     Gif_CreateUncompressedImage  (Gif_Image *, bool);
@@ -214,12 +207,11 @@ void          Gif_DeleteColormap     (Gif_Colormap *);
 	col.G = g,\
 	col.B = b
 
-#define Gif_FindColor(cm,sc) Gif_SearchColor(cm->col, cm->ncol, sc)
+#define Gif_FindColor(cm,sc) Gif_IndexOfColor(cm->col, cm->ncol, sc)
 #define Gif_AddColor(cm,pc) (void)Gif_PutColor(cm, -1, pc)
 
 //  Colormap others methods declare
-int  Gif_SearchColor (const Gif_Color *, const int, Gif_Color);
-int  Gif_PutColor    (   Gif_Colormap *,       int, Gif_Color);
+int Gif_PutColor(Gif_Colormap *, int look_from, Gif_Color);
 
 
 // Comment class
@@ -332,6 +324,10 @@ unsigned Gif_InterlaceLine (unsigned, unsigned);
 char   * Gif_CopyString    (const char *);
 void     Gif_Free          (void *);
 
+Gif_Image *Gif_ImageByName (Gif_Image **arr, const int len, const char *name);
+int        Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img);
+int        Gif_IndexOfColor(Gif_Color * arr, const int len, const Gif_Color  col);
+
 #define GIF_T_STREAM   0
 #define GIF_T_IMAGE    1
 #define GIF_T_COLORMAP 2
@@ -352,7 +348,10 @@ void     Gif_Debug(char *x, ...);
 /* Legacy */
 #define Gif_CopyStreamSkeleton Gif_NewStreamFrom
 #define Gif_NewFullColormap    Gif_NewColormap
-#define Gif_ImageNumber        Gif_GetImageNum
+#define Gif_ImageCount         Gif_GetImagesCount
+#define Gif_GetImage           Gif_GetImageByIndex
+#define Gif_GetNamedImage      Gif_GetImageByName
+#define Gif_ImageNumber        Gif_GetIndexOfImage
 
 #define Gif_New(t)         (    (t*) malloc(            sizeof(t)      ))
 #define Gif_NewArray(t,n)  (    (t*) malloc(            sizeof(t) * (n)))

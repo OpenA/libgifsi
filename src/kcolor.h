@@ -54,20 +54,8 @@ static inline kacolor kac_New(short r, short g, short b, short a) {
 /* return a hex color string definition for `x` */
 const char* kc_debug_str(kcolor x);
 
-/* set `*x` to the reverse gamma transformation of `*x` */
-void kc_revgamma_transform(kcolor* x);
-
-/* return the reverse gramma transformation of `*x` as a Gif_Color */
-static inline Gif_Color kc_togfcg(const kcolor* x) {
-	kcolor xx = *x;
-	Gif_Color gfc;
-	kc_revgamma_transform(&xx);
-	gfc.R = (unsigned char)(xx.a[0] >> 7);
-	gfc.G = (unsigned char)(xx.a[1] >> 7);
-	gfc.B = (unsigned char)(xx.a[2] >> 7);
-	gfc.haspixel = 0;
-	return gfc;
-}
+/* return the gramma reverse transformation Color */
+Gif_Color kc_MakeGRTColor(const kcolor);
 
 
 /* return the squared Euclidean distance between `*x` and `*y` */

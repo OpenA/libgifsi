@@ -714,7 +714,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
 
     kcdiversity_init(&div, &kch, 0);
     for (i = 0; i != kch.n && i != gfcm->ncol
-             && kch.h[i].count == (unsigned)-1; ++i)
+             && kch.h[i].count == UINT32_MAX; ++i)
         kcdiversity_choose(&div, i, 0);
 
     nadded = 0;
@@ -723,7 +723,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
         if (chosen >= kch.n || div.min_dist[chosen] <= sctx->max_desired_dist)
             break;
         kcdiversity_choose(&div, chosen, 0);
-        gfc = kc_togfcg(&kch.h[chosen].ka.k);
+        gfc = kc_MakeGRTColor(kch.h[chosen].ka.k);
         Gif_AddColor(gfcm, gfc);
         kd3_add8g(sctx->kd3, gfc);
         ++nadded;

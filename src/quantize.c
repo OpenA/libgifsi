@@ -33,14 +33,24 @@ static inline void unmark_pixels(Gif_Colormap *gfcm)
 		gfcm->col[i].haspixel = 0;
 }
 
+/* set `*x` to the reverse gamma transformation of `*x` */
+static inline unsigned char kc_revgamma_transform(short a)
+{
+	unsigned short c = gamma_tables[1][a >> 7];
+	while (c < 0x7F80 && a >= gamma_tables[0][(c + 0x80) >> 7])
+		c += 0x80;
+	return c >> 7;
+}
+
 const char *kc_debug_str(kcolor x) {
 	static int whichbuf = 0;
 	static char buf[4][32];
 	whichbuf = (whichbuf + 1) % 4;
 	if (x.a[0] >= 0 && x.a[1] >= 0 && x.a[2] >= 0) {
-		kc_revgamma_transform(&x);
 		sprintf(buf[whichbuf], "#%02X%02X%02X",
-				x.a[0] >> 7, x.a[1] >> 7, x.a[2] >> 7);
+				kc_revgamma_transform(x.a[0]),
+				kc_revgamma_transform(x.a[1]),
+				kc_revgamma_transform(x.a[2]));
 	} else
 		sprintf(buf[whichbuf], "<%d,%d,%d>", x.a[0], x.a[1], x.a[2]);
 	return buf[whichbuf];
@@ -85,14 +95,15 @@ void kc_set_gamma(int type, double gamma) {
 #endif
 }
 
-void kc_revgamma_transform(kcolor *x)
+Gif_Color kc_MakeGRTColor(const kcolor x)
 {
-	for (int d = 0; d != 3; d++) {
-		int c = gamma_tables[1][x->a[d] >> 7];
-		while (c < 0x7F80 && x->a[d] >= gamma_tables[0][(c + 0x80) >> 7])
-			c += 0x80;
-		x->a[d] = c;
-	}
+	Gif_Color gfc = {
+		.haspixel = 0,
+		.R = kc_revgamma_transform(x.a[0]),
+		.G = kc_revgamma_transform(x.a[1]),
+		.B = kc_revgamma_transform(x.a[2])
+	};
+	return gfc;
 }
 
 #if 0
@@ -102,12 +113,12 @@ static void kc_test_gamma() {
 		for (y = 0; y < 256; y++)
 			for (z = 0; z < 256; z++) {
 				kcolor k = KC_Set8g(gamma_tables[0], x, y, z);
-				kc_revgamma_transform(&k);
-				if ((k.a[0] >> 7) != x || (k.a[1] >> 7) != y || (k.a[2] >> 7) != z) {
-					kcolor kg = KC_Set8g(gamma_tables[0], x, y, z);
+				unsigned char rg0 = kc_revgamma_transform(k.a[0]),
+				              rg1 = kc_revgamma_transform(k.a[1]),
+				              rg2 = kc_revgamma_transform(k.a[2]);
+				if (rg0 != x || rg1 != y || rg2 != z) {
 					fprintf(stderr, "#%02X%02X%02X ->g #%04X%04X%04X ->revg #%02X%02X%02X!\n",
-							x, y, z, kg.a[0], kg.a[1], kg.a[2],
-							k.a[0] >> 7, k.a[1] >> 7, k.a[2] >> 7);
+							x, y, z, k.a[0], k.a[1], k.a[2], rg0, rg1, rg2);
 					assert(0);
 				}
 			}
@@ -291,25 +302,10 @@ void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 	*ntransp_store = transp_count;
 }
 
-static int red_kchistitem_compare(const void *va, const void *vb)
+static int kchistitem_sort_cmp(const kchistitem *_a, const kchistitem *_b, int *_c)
 {
-	const kchistitem *a = (const kchistitem *)va;
-	const kchistitem *b = (const kchistitem *)vb;
-	return a->ka.a[0] - b->ka.a[0];
-}
-
-static int green_kchistitem_compare(const void *va, const void *vb)
-{
-	const kchistitem *a = (const kchistitem *)va;
-	const kchistitem *b = (const kchistitem *)vb;
-	return a->ka.a[1] - b->ka.a[1];
-}
-
-static int blue_kchistitem_compare(const void *va, const void *vb)
-{
-	const kchistitem *a = (const kchistitem *)va;
-	const kchistitem *b = (const kchistitem *)vb;
-	return a->ka.a[2] - b->ka.a[2];
+	const int i = *_c;
+	return _a->ka.a[i] - _b->ka.a[i];
 }
 
 static int popularity_kchistitem_compare(const void *va, const void *vb)
@@ -330,111 +326,116 @@ static int popularity_sort_compare(const void *va, const void *vb)
 /* COLORMAP FUNCTIONS return a palette (a vector of Gif_Colors). The
    pixel fields are undefined; the haspixel fields are all 0. */
 
-typedef struct {
-	int first, size;
-	unsigned pixel;
-} adaptive_slot;
-
 static void colormap_median_cut(kchist *kch, Gif_Colormap *gfcm)
 {
-	adaptive_slot *slots = Gif_NewArray(adaptive_slot, gfcm->ncol);
+	const int adsize = gfcm->ncol;
 	Gif_Color *adapt = gfcm->col;
-	int nadapt;
-	int i, j, k;
+	int nadapt, i, j;
 
   /* This code was written with reference to ppmquant by Jef Poskanzer,
      part of the pbmplus package. */
 
+	unsigned Aslot_pixel[adsize];
+	     int Aslot_size [adsize],
+	         Aslot_first[adsize];
+
 	/* 1. set up the first slot, containing all pixels. */
-	slots[0].first = 0;
-	slots[0].size = kch->n;
-	slots[0].pixel = 0;
+	Aslot_first[0] = 0;
+	Aslot_size [0] = kch->n;
+	Aslot_pixel[0] = 0;
+
 	for (i = 0; i < kch->n; i++)
-		slots[0].pixel += kch->h[i].count;
+		Aslot_pixel[0] += kch->h[i].count;
 
 	/* 2. split slots until we have enough. */
-	for (nadapt = 1; nadapt < gfcm->ncol; nadapt++) {
-		adaptive_slot *split = 0;
+	for (nadapt = 1; nadapt < adsize; nadapt++)
+	{
 		kcolor minc, maxc;
 		kchistitem *slice;
 
 		/* 2.1. pick the slot to split. */
 		unsigned split_pixel = 0;
+		     int split_size  = 0,
+		         split_first = 0;
+
+		int kk = -1;
 		for (i = 0; i < nadapt; i++) {
-			if (slots[i].size >= 2 && slots[i].pixel > split_pixel) {
-				split = &slots[i];
-				split_pixel = slots[i].pixel;
+			if (Aslot_size[i] >= 2 && Aslot_pixel[i] > split_pixel) {
+				split_first = Aslot_first[i];
+				split_size  = Aslot_size [i];
+				split_pixel = Aslot_pixel[i];
+				kk = i;
 			}
 		}
-		if (!split)
+		if (kk == -1)
 			break;
-		slice = &kch->h[split->first];
+		slice = &kch->h[split_first];
 
 		/* 2.2. find its extent. */
-		kchistitem *trav = slice;
-		minc = maxc = trav->ka.k;
-		for (i = 1, trav++; i < split->size; i++, trav++) {
-			for (k = 0; k != 3; ++k) {
-				minc.a[k] = _MIN(minc.a[k], trav->ka.a[k]);
-				maxc.a[k] = _MAX(maxc.a[k], trav->ka.a[k]);
-			}
+		minc = maxc = slice->ka.k;
+		for (i = 1; i < split_size; i++) {
+			short _R = slice[i].ka.a[0],
+			      _G = slice[i].ka.a[1],
+			      _B = slice[i].ka.a[2];
+
+			minc.a[0] = _MIN(minc.a[0], _R); maxc.a[0] = _MAX(maxc.a[0], _R);
+			minc.a[1] = _MIN(minc.a[1], _G); maxc.a[1] = _MAX(maxc.a[1], _G);
+			minc.a[2] = _MIN(minc.a[2], _B); maxc.a[2] = _MAX(maxc.a[2], _B);
 		}
 
 		/* 2.3. decide how to split it. use the luminance method. also sort
 		   the colors. */
 		{
-			double red_diff = 0.299 * (maxc.a[0] - minc.a[0]);
-			double green_diff = 0.587 * (maxc.a[1] - minc.a[1]);
-			double blue_diff = 0.114 * (maxc.a[2] - minc.a[2]);
-			if (red_diff >= green_diff && red_diff >= blue_diff)
-				qsort(slice, split->size, sizeof(kchistitem), red_kchistitem_compare);
-			else if (green_diff >= blue_diff)
-				qsort(slice, split->size, sizeof(kchistitem), green_kchistitem_compare);
-			else
-				qsort(slice, split->size, sizeof(kchistitem), blue_kchistitem_compare);
+			double R_diff = 0.299 * (maxc.a[0] - minc.a[0]);
+			double G_diff = 0.587 * (maxc.a[1] - minc.a[1]);
+			double B_diff = 0.114 * (maxc.a[2] - minc.a[2]);
+			int    C_num  = (
+				R_diff >= G_diff &&
+				R_diff >= B_diff ? 0 :
+				G_diff >= B_diff ? 1 : 2
+			);
+			qSortPerm(kchistitem, slice, split_size, kchistitem_sort_cmp, &C_num);
 		}
 
 		/* 2.4. decide where to split the slot and split it there. */
 		{
-			unsigned half_pixels = split->pixel / 2;
+			unsigned half_pixels = split_pixel / 2;
 			unsigned pixel_accum = slice[0].count;
 			unsigned diff1, diff2;
-			for (i = 1; i < split->size - 1 && pixel_accum < half_pixels; i++)
+			for (i = 1; i < split_size - 1 && pixel_accum < half_pixels; i++)
 				pixel_accum += slice[i].count;
 
 		/* We know the area before the split has more pixels than the
 		   area after, possibly by a large margin (bad news). If it
 		   would shrink the margin, change the split. */
-			diff1 = 2 * pixel_accum - split->pixel;
-			diff2 = split->pixel - 2 * (pixel_accum - slice[i - 1].count);
+			diff1 = 2 * pixel_accum - split_pixel;
+			diff2 = split_pixel - 2 * (pixel_accum - slice[i - 1].count);
 			if (diff2 < diff1 && i > 1) {
-				i--;
-				pixel_accum -= slice[i].count;
+				pixel_accum -= slice[--i].count;
 			}
-			slots[nadapt].first = split->first + i;
-			slots[nadapt].size = split->size - i;
-			slots[nadapt].pixel = split->pixel - pixel_accum;
-			split->size = i;
-			split->pixel = pixel_accum;
+			Aslot_first[nadapt] = split_first + i;
+			Aslot_size [nadapt] = split_size  - i;
+			Aslot_pixel[nadapt] = split_pixel - pixel_accum;
+			Aslot_size [kk]     = i;
+			Aslot_pixel[kk]     = pixel_accum;
 		}
 	}
 
 	/* 3. make the new palette by choosing one color from each slot. */
 	for (i = 0; i < nadapt; i++) {
 		double px[3] = { 0, 0, 0 };
-		kchistitem *slice = &kch->h[slots[i].first];
+		kchistitem *slice = &kch->h[Aslot_first[i]];
 		kcolor kc;
-		for (j = 0; j < slots[i].size; j++) {
+		for (j = 0; j < Aslot_size[i]; j++) {
 			px[0] += slice[j].ka.a[0] * (double)slice[j].count;
 			px[1] += slice[j].ka.a[1] * (double)slice[j].count;
 			px[2] += slice[j].ka.a[2] * (double)slice[j].count;
 		}
-		kc.a[0] = (int)(px[0] / slots[i].pixel);
-		kc.a[1] = (int)(px[1] / slots[i].pixel);
-		kc.a[2] = (int)(px[2] / slots[i].pixel);
-		adapt[i] = kc_togfcg(&kc);
+		kc.a[0] = (int)(px[0] / Aslot_pixel[i]);
+		kc.a[1] = (int)(px[1] / Aslot_pixel[i]);
+		kc.a[2] = (int)(px[2] / Aslot_pixel[i]);
+		adapt[i] = kc_MakeGRTColor(kc);
 	}
-	Gif_DeleteArray(slots);
 }
 
 void kcdiversity_init(kcdiversity *div, kchist *kch, int dodither)
@@ -445,11 +446,11 @@ void kcdiversity_init(kcdiversity *div, kchist *kch, int dodither)
 	div->closest = Gif_NewArray(int, kch->n);
 	div->min_dist = Gif_NewArray(unsigned, kch->n);
 	for (i = 0; i != kch->n; ++i)
-		div->min_dist[i] = (unsigned)-1;
+		div->min_dist[i] = UINT32_MAX;
 	if (dodither) {
 		div->min_dither_dist = Gif_NewArray(unsigned, kch->n);
 		for (i = 0; i < kch->n; i++)
-			div->min_dither_dist[i] = (unsigned)-1;
+			div->min_dither_dist[i] = UINT32_MAX;
 	} else
 		div->min_dither_dist = NULL;
 	div->chosen = Gif_NewArray(int, kch->n);
@@ -543,21 +544,21 @@ int kcdiversity_choose(kcdiversity *div, int chosen, int dodither)
 
 static void colormap_diversity_do_blend(kcdiversity *div)
 {
-	int i, j, k, n = div->kch->n;
-	kchistitem *hist = div->kch->h;
-	int *chosenmap = Gif_NewArray(int, n);
-	scale_color *di = Gif_NewArray(scale_color, div->nchosen);
+	kchistitem *hist =  div->kch->h;
+	int i, j, chosenmap[div->kch->n];
+	scale_color di[div->nchosen];
 	for (i = 0; i < div->nchosen; i++) {
 		di[i].a[0] = di[i].a[1] = di[i].a[2] = di[i].a[3] = 0;
 		chosenmap[div->chosen[i]] = i;
 	}
-	for (i = 0; i < n; i++) {
+	for (i = 0; i < div->kch->n; i++) {
 		double count = hist[i].count;
 		if (div->closest[i] == i)
 			count *= 3;
 		j = chosenmap[div->closest[i]];
-		for (k = 0; k != 3; k++)
-			di[j].a[k] += hist[i].ka.a[k] * count;
+		di[j].a[0] += hist[i].ka.a[0] * count;
+		di[j].a[1] += hist[i].ka.a[1] * count;
+		di[j].a[2] += hist[i].ka.a[2] * count;
 		di[j].a[3] += count;
 	}
 	for (i = 0; i < div->nchosen; i++) {
@@ -568,8 +569,6 @@ static void colormap_diversity_do_blend(kcdiversity *div)
 			hist[match].ka.a[2] = (int)(di[i].a[2] / di[i].a[3]);
 		}
 	}
-	Gif_DeleteArray(chosenmap);
-	Gif_DeleteArray(di);
 }
 
 static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_DitherPlan *dp, bool do_blend)
@@ -615,7 +614,7 @@ static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_DitherPlan *
 		colormap_diversity_do_blend(&div);
 
 	for (nadapt = 0; nadapt < div.nchosen; nadapt++)
-		gfcm->col[nadapt] = kc_togfcg(&kch->h[div.chosen[nadapt]].ka.k);
+		gfcm->col[nadapt] = kc_MakeGRTColor(kch->h[div.chosen[nadapt]].ka.k);
 	gfcm->ncol = nadapt;
 
 	kcdiversity_cleanup(&div);
@@ -869,7 +868,7 @@ int kd3_closest_transformed(kd3_tree *kd3, const kcolor *k, unsigned *dist_store
 	unsigned char state[32];
 	int stackpos = 0;
 	int result = -1;
-	unsigned mindist = (unsigned)-1;
+	unsigned mindist = UINT32_MAX;
 
 	if (!kd3->tree)
 		kd3_build(kd3);

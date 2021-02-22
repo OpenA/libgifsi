@@ -33,9 +33,6 @@
 #endif
 
 #define GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL 1
-#define GIF_MAX_CODE_BITS     12
-#define GIF_MAX_CODE          0x1000
-#define GIF_MAX_BLOCK         0xFF
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
 
@@ -52,8 +49,6 @@ typedef struct Gif_Image      Gif_Image;
 typedef struct Gif_Colormap   Gif_Colormap;
 typedef struct Gif_Comment    Gif_Comment;
 typedef struct Gif_Extension  Gif_Extension;
-
-typedef unsigned short Gif_Code;
 
 
 //  Stream class

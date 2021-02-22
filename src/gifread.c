@@ -9,40 +9,29 @@
 
 #include <gifsi.h>
 
-typedef struct {
+#define READ_CODE_MAX    0x1000
+#define READ_CODE_BITS   12
+#define READ_BUFFER_SIZE 255
+
+typedef unsigned short Code_t;
+
+struct GReadContext {
 
 	Gif_Stream     *stream;
 	Gif_Image      *img;
 
-	Gif_Code       *prefix;
-	unsigned char  *suffix;
-	unsigned short *length;
+	Code_t         prefix[READ_CODE_MAX];
+	unsigned char  suffix[READ_CODE_MAX];
+	unsigned short length[READ_CODE_MAX];
 
 	unsigned short width, height;
 	unsigned char *image, *maximage;
 	unsigned int decodepos;
 
-	Gif_ReadErrorHandler handler;
 	int errors[2];
+};
 
-} Gif_Context;
-
-static bool make_context(Gif_Context *gctx, Gif_ReadErrorHandler handler)
-{
-	gctx->errors[0] = gctx->errors[1] = 0;
-	gctx->handler   = handler;
-	return (
-		(gctx->prefix = Gif_NewArray(Gif_Code      , GIF_MAX_CODE)) &&
-		(gctx->suffix = Gif_NewArray(unsigned char , GIF_MAX_CODE)) &&
-		(gctx->length = Gif_NewArray(unsigned short, GIF_MAX_CODE))
-	);
-}
-static void clear_context(Gif_Context *gctx)
-{
-	Gif_DeleteArray(gctx->prefix);
-	Gif_DeleteArray(gctx->suffix);
-	Gif_DeleteArray(gctx->length);
-}
+#define GR_DEFAULTS { .errors = {0,0} }
 
 typedef struct Gif_Reader {
 
@@ -152,24 +141,21 @@ make_data_reader(Gif_Reader *grr, const unsigned char *data, unsigned length)
 }
 
 static void
-emit_read_error(Gif_Context *gctx, int error_flag, const char *text)
+emit_read_error(struct GReadContext *gctx, int error_flag, const char *text)
 {
-	Gif_ReadErrorHandler handler = gctx->handler ? gctx->handler : default_error_handler;
 	if (error_flag >= 0)
 		gctx->errors[error_flag > 0] += 1;
-	if (handler)
-		handler(gctx->stream, gctx->img, error_flag, text);
 }
 
 static unsigned char
-one_code(Gif_Context *gctx, Gif_Code code)
+one_code(struct GReadContext *gctx, Code_t code)
 {
 	int lastsuffix = 0;
 	int codelength = gctx->length[code];
 
 	unsigned char *suffx = gctx->suffix;
 	unsigned char *ptr   = gctx->image + (gctx->decodepos += codelength);
-	Gif_Code      *prefx = gctx->prefix;
+	Code_t        *prefx = gctx->prefix;
 
 	while ((codelength--) > 0) {
 		lastsuffix = suffx[code];
@@ -212,11 +198,11 @@ read_image_block(Gif_Reader *grr, unsigned char *buffer, int *bit_pos_store,
 }
 
 static void
-read_image_data(Gif_Context *gctx, Gif_Reader *grr)
+read_image_data(struct GReadContext *gctx, Gif_Reader *grr)
 {
-	/* we need a bit more than GIF_MAX_BLOCK in case a single code is split
+	/* we need a bit more than READ_BUFFER_SIZE in case a single code is split
 		across blocks */
-	unsigned char buffer[GIF_MAX_BLOCK + 5];
+	unsigned char buffer[READ_BUFFER_SIZE + 5];
 	unsigned int  accum;
 	int i;
 	
@@ -224,7 +210,7 @@ read_image_data(Gif_Context *gctx, Gif_Reader *grr)
 	    bit_position = 0,
 	    bit_length   = 0;
 
-	Gif_Code code, old_code, next_code, eoi_code, clear_code;
+	Code_t code, old_code, next_code, eoi_code, clear_code;
 
 #define CUR_BUMP_CODE ( 1 << bits_needed)
 #define CUR_CODE_MASK ((1 << bits_needed) - 1)
@@ -233,9 +219,9 @@ read_image_data(Gif_Context *gctx, Gif_Reader *grr)
 
 	GIF_DEBUG(("\n\nmin_code_size(%d) ", min_code_size));
 
-	if (min_code_size >= GIF_MAX_CODE_BITS) {
+	if (min_code_size >= READ_CODE_BITS) {
 		emit_read_error(gctx, 1, "image corrupted, min_code_size too big");
-		min_code_size = GIF_MAX_CODE_BITS - 1;
+		min_code_size = READ_CODE_BITS - 1;
 	} else if (min_code_size < 2) {
 		emit_read_error(gctx, 1, "image corrupted, min_code_size too small");
 		min_code_size = 2;
@@ -275,7 +261,7 @@ read_image_data(Gif_Context *gctx, Gif_Reader *grr)
 		accum = buffer[i] + (buffer[i + 1] << 8);
 		if (bits_needed >= 8)
 			accum |= (buffer[i+2]) << 16;
-		code = (Gif_Code)((accum >> (bit_position % 8)) & CUR_CODE_MASK);
+		code = (Code_t)((accum >> (bit_position % 8)) & CUR_CODE_MASK);
 		bit_position += bits_needed;
 
 		GIF_DEBUG(("%d ", code));
@@ -332,7 +318,7 @@ read_image_data(Gif_Context *gctx, Gif_Reader *grr)
 	 when we're reading at the end of a GIF) */
 		if (next_code != clear_code) {
 			if (++next_code == CUR_BUMP_CODE) {
-				if (bits_needed < GIF_MAX_CODE_BITS)
+				if (bits_needed < READ_CODE_BITS)
 					bits_needed++;
 				else
 					next_code = clear_code;
@@ -466,7 +452,7 @@ read_compressed_image_file(Gif_Reader *grr, Gif_Image *gfi, int flags)
 }
 
 static bool
-uncompress_image(Gif_Context *gctx, Gif_Image *gfi, Gif_Reader *grr)
+uncompress_image(struct GReadContext *gctx, Gif_Image *gfi, Gif_Reader *grr)
 {
 	if (!Gif_CreateUncompressedImage(gfi, gfi->interlace))
 		return false;
@@ -486,7 +472,7 @@ int
 Gif_FullUncompressImage(Gif_Stream* gfs, Gif_Image* gfi,
                         Gif_ReadErrorHandler handler)
 {
-	Gif_Context gctx;
+	struct GReadContext gctx = GR_DEFAULTS;
 	Gif_Reader grr;
 	int ok = 0;
 
@@ -502,11 +488,10 @@ Gif_FullUncompressImage(Gif_Stream* gfs, Gif_Image* gfi,
 	gctx.stream = gfs;
 	gctx.img    = gfi;
 	
-	if (make_context(&gctx, handler) && gfi->compressed) {
+	if (gfi->compressed) {
 		make_data_reader(&grr, gfi->compressed, gfi->compressed_len);
 		ok = uncompress_image(&gctx, gfi, &grr);
 	}
-	clear_context(&gctx);
 
 	if (gctx.errors[0] || gctx.errors[1])
 		emit_read_error(&gctx, -1, NULL);
@@ -514,7 +499,7 @@ Gif_FullUncompressImage(Gif_Stream* gfs, Gif_Image* gfi,
 }
 
 static int
-read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, int flags)
+read_image(struct GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, int flags)
 {
 	bool     ok     = true;
 	unsigned left   = (gfi->left   = readUint16(grr) );
@@ -562,7 +547,7 @@ read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, 
 		ok = uncompress_image(gctx, gfi, grr);
 	} else {
 		/* skip over the image */
-		unsigned char buffer[GIF_MAX_BLOCK];
+		unsigned char buffer[READ_BUFFER_SIZE];
 		unsigned int  size;
 		while ((size = readUint8(grr)) > 0)
 			readChunk(grr, buffer, size);
@@ -571,10 +556,10 @@ read_image(Gif_Context *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, 
 }
 
 static void
-read_graphic_control_extension(Gif_Context *gctx, Gif_Image *gfi,
+read_graphic_control_extension(struct GReadContext *gctx, Gif_Image *gfi,
                                Gif_Reader *grr)
 {
-	unsigned char crap[GIF_MAX_BLOCK];
+	unsigned char crap[READ_BUFFER_SIZE];
 	unsigned int  len = readUint8(grr);
 	unsigned char packed;
 
@@ -650,9 +635,9 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 }
 
 static void
-read_application_extension(Gif_Context *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi)
+read_application_extension(struct GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi)
 {
-	unsigned char buf[GIF_MAX_BLOCK + 1];
+	unsigned char buf[READ_BUFFER_SIZE + 1];
 	unsigned char len = readUint8(grr);
 
 	readChunk(grr, buf, len);
@@ -708,12 +693,11 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 
 	skipBytes(grr, 3);
 
-	Gif_Context gctx;
+	struct GReadContext gctx = GR_DEFAULTS;
+
 	Gif_Stream *gfs;
 	Gif_Image  *gfi;
 
-	if (!make_context(&gctx, handler))
-		goto done;
 	if (!(gfs = gctx.stream = Gif_NewStream()))
 		goto done;
 	if (!(gfi = gctx.img = Gif_NewImage())) {
@@ -804,7 +788,6 @@ done:
 	}
 	Gif_DeleteImage(gfi);
 	Gif_DeleteArray(last_name);
-	clear_context(&gctx);
 	last_name = NULL;
 	gctx.img = NULL;
 

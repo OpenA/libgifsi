@@ -12,9 +12,9 @@
 #include <assert.h>
 #include "unipart.h"
 
-#define WRITE_BUFFER_SIZE       255
-#define NODES_SIZE              GIF_MAX_CODE
-#define LINKS_SIZE              GIF_MAX_CODE
+#define WRITE_CODE_MAX     0x1000
+#define WRITE_CODE_BITS    12
+#define WRITE_BUFFER_SIZE  255
 
 /* 1.Aug.1999 - Removed code hashing in favor of an adaptive tree strategy
    based on Whirlgif-3.04, written by Hans Dinsen-Hansen <dino@danbbs.dk>. Mr.
@@ -38,6 +38,8 @@
 #define TABLE_TYPE      0
 #define LINKS_TYPE      1
 #define MAX_LINKS_TYPE  5
+
+typedef unsigned short Gif_Code;
 
 typedef struct Gif_Node {
 	Gif_Code code;
@@ -132,8 +134,8 @@ gif_writer_init(Gif_Writer* grr, FILE* f, const Gif_CompressInfo* gcinfo)
 	grr->Write_chunk = f ? write_file_chunk : write_data_chunk;
 
 	return (
-		(grr->code_table.nodes = Gif_NewArray(Gif_Node , NODES_SIZE)) &&
-		(grr->code_table.links = Gif_NewArray(Gif_Node*, LINKS_SIZE))
+		(grr->code_table.nodes = Gif_NewArray(Gif_Node , WRITE_CODE_MAX)) &&
+		(grr->code_table.links = Gif_NewArray(Gif_Node*, WRITE_CODE_MAX))
 	);
 }
 
@@ -164,7 +166,7 @@ gfc_clear(Gif_CodeTable *gfc, Gif_Code clear_code)
 static inline Gif_Node *
 gfc_lookup(Gif_CodeTable *gfc, Gif_Node *node, unsigned char suffix)
 {
-	assert(!node || (node >= gfc->nodes && node < gfc->nodes + NODES_SIZE));
+	assert(!node || (node >= gfc->nodes && node < gfc->nodes + WRITE_CODE_MAX));
 	assert(suffix < gfc->clear_code);
 	if (!node)
 		return &gfc->nodes[suffix];
@@ -258,7 +260,7 @@ gfc_define(Gif_CodeTable *gfc, Gif_Node *work_node, unsigned char suffix,
 	if (work_node->type == TABLE_TYPE)
 		work_node->child.m[suffix] = next_node;
 	else if (work_node->type < MAX_LINKS_TYPE
-			|| gfc->links_pos + gfc->clear_code > LINKS_SIZE) {
+			|| gfc->links_pos + gfc->clear_code > WRITE_CODE_MAX) {
 		next_node->sibling = work_node->child.s;
 		work_node->child.s = next_node;
 		if (work_node->type < MAX_LINKS_TYPE)
@@ -315,7 +317,7 @@ gfc_lookup_lossy(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Image *gfi,
 	if (pos >= image_endpos) return best_t;
 
 	suffix = gif_pixel_at_pos(gfi, pos);
-	assert(!node || (node >= gfc->nodes && node < gfc->nodes + NODES_SIZE));
+	assert(!node || (node >= gfc->nodes && node < gfc->nodes + WRITE_CODE_MAX));
 	assert(suffix < gfc->clear_code);
 	if (!node) {
 		gfc_rgbdiff zero_diff = {0, 0, 0};
@@ -432,10 +434,10 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 		run_ewma += (run - run_ewma) >> 0x04;
 
 #define _NEXT_CODE_ \
-	if (next_code < GIF_MAX_CODE)\
+	if (next_code < WRITE_CODE_MAX)\
 		gfc_define(gfc, work_node, suffix, next_code++);\
 	else\
-		next_code = GIF_MAX_CODE + 1; // to match `i > CUR_BUMP_CODE` above
+		next_code = WRITE_CODE_MAX + 1; // to match `i > CUR_BUMP_CODE` above
 
 /* Always clear if run_ewma gets small relative to
 	min_code_bits. Otherwise, clear if #images/run is smaller
@@ -496,7 +498,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 		break;
 
 	} else {
-		if (next_code > CUR_BUMP_CODE && cur_code_bits < GIF_MAX_CODE_BITS)
+		if (next_code > CUR_BUMP_CODE && cur_code_bits < WRITE_CODE_BITS)
 			/* bump up compression size */
 			cur_code_bits++;
 		/* Adjust current run length average. */

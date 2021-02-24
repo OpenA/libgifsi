@@ -367,10 +367,14 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
     merge_comments(desti->comment, srci->comment);
   }
   if (srci->extension_list && !srcfr->no_extensions) {
-      Gif_Extension* gfex;
-      for (gfex = srci->extension_list; gfex; gfex = gfex->next)
-          if (gfex->kind != 255 || !srcfr->no_app_extensions)
-              Gif_AddExtension(dest, desti, Gif_NewExtensionFrom(gfex));
+      Gif_Extension *dst_ex, *src_ex = srci->extension_list;
+      do {
+        if (src_ex->kind != 255 || !srcfr->no_app_extensions) {
+            dst_ex = Gif_New(Gif_Extension);
+          if (Gif_CopyExtension(dst_ex, src_ex))
+              Gif_AddExtension(dest, desti, dst_ex);
+        }
+      } while ((src_ex = src_ex->next));
   }
   while (srcfr->extensions) {
       Gif_Extension* next = srcfr->extensions->next;

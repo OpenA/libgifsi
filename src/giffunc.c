@@ -125,13 +125,12 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 		}
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->extension_list) {
-		Gif_Extension* gfex = src->extension_list;
-		while (gfex) {
-			Gif_Extension* dstex = Gif_NewExtensionFrom(gfex);
-			if (!(dstex && Gif_AddExtension(NULL, dest, dstex)))
-				return false;
-			gfex = gfex->next;
-		}
+		Gif_Extension *dst_ex, *src_ex = src->extension_list;
+		do {
+			dst_ex = Gif_New(Gif_Extension);
+			if (Gif_CopyExtension(dst_ex, src_ex))
+				Gif_AddExtension(NULL, dest, dst_ex);
+		} while ((src_ex = src_ex->next));
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->local) {
 		dest->local = Gif_New(Gif_Colormap);
@@ -275,52 +274,39 @@ bool Gif_AddComment(Gif_Comment *gfcom, const char *str, int len)
 /*
   Extension constructor functions
 */
-Gif_Extension *
-Gif_NewExtension(int kind, const char* appname, int applength)
+bool Gif_InitExtension(Gif_Extension *gfex, int kind, const char *name, unsigned len)
 {
-	Gif_Extension *gfex = Gif_New(Gif_Extension);
-
-	if (gfex != NULL) { /* Gif_InitExtension */
-		if(appname && (gfex->appname = Gif_NewArray(char, applength + 1))) {
-			memcpy(gfex->appname, appname, applength);
-			gfex->appname[applength] = '\0';
-			gfex->applength = applength;
-		} else {
-			gfex->appname = NULL;
-			gfex->applength = 0;
-		}
-		gfex->kind = kind;
-		gfex->data = NULL;
-		gfex->stream = NULL;
-		gfex->image = NULL;
-		gfex->next = NULL;
-		gfex->free_data = NULL;
-		gfex->packetized = 0;
+	if (!gfex)
+		return false;
+	if (name && (gfex->appname = Gif_NewArray(char, len + 1))) {
+		memcpy(gfex->appname, name, len);
+		gfex->appname[len] = '\0';
+		gfex->applength = len;
+	} else {
+		gfex->appname = NULL;
+		gfex->applength = 0;
 	}
-	return gfex;
+	gfex->kind = kind;
+	gfex->data = NULL;
+	gfex->stream = NULL;
+	gfex->image = NULL;
+	gfex->next = NULL;
+	gfex->packetized = gfex->length = 0;
+	return true;
 }
 
-Gif_Extension *
-Gif_NewExtensionFrom(const Gif_Extension* src)
+bool Gif_CopyExtension(Gif_Extension* dest, const Gif_Extension* src)
 {
-	Gif_Extension* dest = Gif_NewExtension(src->kind, src->appname, src->applength);
-	if (dest != NULL) { /* Gif_CopyExtension */
-		if (!src->data || !src->free_data) {
-			dest->data   = src->data;
-			dest->length = src->length;
-		} else {
-			if (!(dest->data = Gif_NewArray(unsigned char, src->length))){
-				Gif_DeleteExtension(dest);
-				return NULL;
-			}
-			memcpy(dest->data, src->data, src->length);
-			dest->length     = src->length;
-			dest->free_data  = Gif_Free;
-		}
-		dest->packetized = src->packetized;
+	if (!src || !Gif_InitExtension(dest, src->kind, src->appname, src->applength))
+		return false;
+	if (src->data && (dest->data = Gif_NewArray(unsigned char, src->length))) {
+		memcpy(dest->data, src->data, src->length);
+		dest->length = src->length;
 	}
-	return dest;
+	dest->packetized = src->packetized;
+	return true;
 }
+
 
 /*
   CompressInfo constructor functions & methods
@@ -664,12 +650,12 @@ void Gif_DeleteComment(Gif_Comment *gfcom)
 	Gif_Delete(gfcom);
 }
 
-void Gif_DeleteExtension(Gif_Extension *gfex)
+void Gif_FreeExtension(Gif_Extension *gfex)
 {
 	if (!gfex)
 		return;
-	if (gfex->data && gfex->free_data)
-		(*gfex->free_data)(gfex->data);
+	if (gfex->data)
+		Gif_DeleteArray(gfex->data);
 
 	Gif_DeleteArray(gfex->appname);
 

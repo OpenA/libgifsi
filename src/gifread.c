@@ -622,11 +622,10 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 		}
 	}
 	if (data)
-		gext = Gif_NewExtension(kind, appname, applength);
-	if (gext) {
+		gext = Gif_New(Gif_Extension);
+	if (Gif_InitExtension(gext, kind, appname, applength)) {
 		gext->data       = data;
 		gext->length     = len;
-		gext->free_data  = Gif_Free;
 		gext->packetized = 1;
 		/* */ data[len]  = 0;
 		/* */ skip       = Gif_AddExtension(gfs, gfi, gext);

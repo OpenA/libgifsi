@@ -1176,14 +1176,14 @@ handle_extension(Clp_Parser *clp, int is_app)
 
   UNCHECKED_MARK_CH(frame, CH_EXTENSION);
   if (is_app)
-    gfex = Gif_NewExtension(255, extension_type, 11);
+    Gif_InitExtension(gfex = Gif_New(Gif_Extension), 255, extension_type, 11);
   else if (!isdigit(extension_type[0]) && extension_type[1] == 0)
-    gfex = Gif_NewExtension(extension_type[0], 0, 0);
+    Gif_NewExtension(gfex, extension_type[0]);
   else {
     long l = strtol(extension_type, (char **)&extension_type, 0);
     if (*extension_type != 0 || l < 0 || l >= 256)
       fatal_error("bad extension type: must be a number between 0 and 255");
-    gfex = Gif_NewExtension(l, 0, 0);
+    Gif_NewExtension(gfex, l);
   }
 
   gfex->data = (uint8_t *)extension_body;

@@ -235,12 +235,13 @@ struct Gif_Extension {
 	Gif_Stream *stream;
 	Gif_Image *image;
 	Gif_Extension *next;
-	void (*free_data)(void *);
 };
 
-Gif_Extension * Gif_NewExtension    (int, const char *, int);
-Gif_Extension * Gif_NewExtensionFrom(const Gif_Extension *);
-void            Gif_DeleteExtension (Gif_Extension *);
+//  Extension init/copy/destroy
+bool Gif_InitExtension(Gif_Extension *gfex, const int kind, const char *name, unsigned len);
+bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src);
+void Gif_FreeExtension(Gif_Extension *);
+
 
 /* Optimizer */
 #define GIF_OPT_MASK      0xFFFF
@@ -350,10 +351,12 @@ void     Gif_Debug(char *x, ...);
 #define Gif_Delete(p)                  free((void*)(p))
 #define Gif_DeleteArray(p)             free((void*)(p))
 
+#define Gif_NewExtension(ex,k) Gif_InitExtension(ex = Gif_New(Gif_Extension),k,NULL,0)
 #define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
 #define Gif_NewStream(gst)     Gif_InitStream(  gst = Gif_New(Gif_Stream))
 #define Gif_NewImage(gim)      Gif_InitImage(   gim = Gif_New(Gif_Image))
 
+#define Gif_DeleteExtension    Gif_FreeExtension
 #define Gif_DeleteColormap     Gif_FreeColormap
 #define Gif_DeleteStream       Gif_FreeStream
 #define Gif_DeleteImage        Gif_FreeImage

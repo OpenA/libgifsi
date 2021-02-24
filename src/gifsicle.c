@@ -932,7 +932,7 @@ do_colormap_change(Gif_Stream *gfs)
 
     if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
       warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
-    if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_cmaps)
+    if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_colors)
       Gif_FullQuantizeColors(gfs, new_cm, &dp);
     Gif_DeleteColormap(new_cm);
   }

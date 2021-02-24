@@ -528,7 +528,7 @@ read_image(struct GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Imag
 		int size = 1 << ((packed & 0x07) + 1);
 		if (!(gfi->local = read_color_table(grr, size)))
 			return false;
-		gfs->has_local_cmaps = true;
+		gfs->has_local_colors = true;
 		gfi->local->refcount = 1;
 	}
 
@@ -698,10 +698,10 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 	Gif_Stream *gfs;
 	Gif_Image  *gfi;
 
-	if (!(gfs = gctx.stream = Gif_NewStream()))
+	if (!Gif_NewStream(gfs = gctx.stream))
 		goto done;
 	if (!(gfi = gctx.img = Gif_NewImage())) {
-		Gif_DeleteStream(gfs);
+		Gif_Delete(gfs);
 		goto done;
 	}
 	gfs->landmark = landmark;

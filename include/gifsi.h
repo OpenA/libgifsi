@@ -36,14 +36,11 @@
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
 
-enum Gif_Disposal {
-	GD_None = 0,
-	GD_Asis,
-	GD_Background,
-	GD_Previous
-};
+#define NO_COPY_GIF_IMAGES     1
+#define NO_COPY_GIF_COLORMAP   2
+#define NO_COPY_GIF_COMMENTS   4
+#define NO_COPY_GIF_EXTENSIONS 8
 
-typedef enum   Gif_Disposal   Gif_Disposal;
 typedef struct Gif_Stream     Gif_Stream;
 typedef struct Gif_Image      Gif_Image;
 typedef struct Gif_Colormap   Gif_Colormap;
@@ -63,7 +60,7 @@ struct Gif_Stream {
 	unsigned short background;  /* 256 means no background */
 	unsigned short screen_width, screen_height;
 
-	bool has_local_cmaps;
+	bool has_local_colors;
 
 	int loopcount, refcount;    /* -1 means no loop count */
 
@@ -77,13 +74,10 @@ struct Gif_Stream {
 #endif
 };
 
-//  Stream construct, copy, destroy fn declare
-Gif_Stream *Gif_NewStream       (void);
-Gif_Stream *Gif_NewStreamFrom   (const Gif_Stream *);
-bool        Gif_CopyStream      (const Gif_Stream *, Gif_Stream *);
-bool        Gif_CopyStreamImages(const Gif_Stream *, Gif_Stream *);
-void        Gif_InitStream            (Gif_Stream *);
-void        Gif_DeleteStream          (Gif_Stream *);
+//  Stream init/copy/destroy
+bool Gif_InitStream(Gif_Stream *);
+bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags);
+void Gif_FreeStream(Gif_Stream *);
 
 //  Stream getters
 #define Gif_GetImagesCount(gfs)    (gfs->nimages)
@@ -103,6 +97,15 @@ bool        Gif_FullUnoptimize        (Gif_Stream *, int);
 
 
 //  Image class
+typedef enum Gif_Disposal Gif_Disposal;
+
+enum Gif_Disposal {
+	GD_None = 0,
+	GD_Asis,
+	GD_Background,
+	GD_Previous
+};
+
 struct Gif_Image {
 	unsigned char **img;     /* img[y][x] == image byte (x,y) */
 	unsigned char *image_data;
@@ -341,7 +344,6 @@ void     Gif_Debug(char *x, ...);
 #endif
 
 /* Legacy */
-#define Gif_CopyStreamSkeleton Gif_NewStreamFrom
 #define Gif_NewFullColormap    Gif_NewColormap
 #define Gif_ImageCount         Gif_GetImagesCount
 #define Gif_GetImage           Gif_GetImageByIndex
@@ -353,6 +355,10 @@ void     Gif_Debug(char *x, ...);
 #define Gif_ReArray(p,t,n) (p = (t*)realloc((void*)(p), sizeof(t) * (n)))
 #define Gif_Delete(p)                  free((void*)(p))
 #define Gif_DeleteArray(p)             free((void*)(p))
+
+#define Gif_NewStream(gfs) Gif_InitStream(gfs = Gif_New(Gif_Stream))
+
+#define Gif_DeleteStream   Gif_FreeStream
 
 #ifdef GIFSI_COMPILE_CPP
 

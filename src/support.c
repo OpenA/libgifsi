@@ -1470,14 +1470,14 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
                      Gt_OutputData *output_data, int compress_immediately,
                      int *huge_stream)
 {
-  Gif_Stream *dest = Gif_NewStream();
-  Gif_Colormap *global = Gif_NewFullColormap(256, 256);
+  Gif_Stream *dest;
+  Gif_Colormap *global = Gif_NewColormap(0, 256);
   int i, same_compressed_ok, all_same_compressed_ok;
 
-  global->ncol = 0;
-  dest->global = global;
-  if (output_data->active_output_name)
-      dest->landmark = output_data->active_output_name;
+  if (Gif_NewStream(dest)) {
+    dest->global = global;
+    dest->landmark = output_data->active_output_name ?: NULL;
+  }
   /* 11/23/98 A new stream's screen size is 0x0; we'll use the max of the
      merged-together streams' screen sizes by default (in merge_stream()) */
 
@@ -1551,7 +1551,6 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
   /* copy stream-wide information from output_data */
   if (output_data->loopcount > -2)
     dest->loopcount = output_data->loopcount;
-  dest->screen_width = dest->screen_height = 0;
 
   /** ACTUALLY MERGE FRAMES INTO THE NEW STREAM **/
   for (i = 0; i < nmerger; i++) {

@@ -12,16 +12,10 @@
 /*
   Stream constructor functions
 */
-Gif_Stream *
-Gif_NewStream(void) {
-	Gif_Stream *gfs = Gif_New(Gif_Stream);
-	if (gfs != NULL)
-		Gif_InitStream(gfs);
-	return gfs;
-}
-
-void Gif_InitStream(Gif_Stream *gfs)
+bool Gif_InitStream(Gif_Stream *gfs)
 {
+	if (!gfs)
+		return false;
 	gfs->images = NULL;
 	gfs->nimages = gfs->imagescap = 0;
 	gfs->global = NULL;
@@ -30,42 +24,48 @@ void Gif_InitStream(Gif_Stream *gfs)
 	gfs->loopcount = -1;
 	gfs->end_comment = NULL;
 	gfs->end_extension_list = NULL;
-	gfs->has_local_cmaps = false;
+	gfs->has_local_colors = false;
 	gfs->errors = 0;
 	gfs->user_flags = 0;
 	gfs->refcount = 0;
 	gfs->landmark = NULL;
+	return true;
 }
 
-Gif_Stream *
-Gif_NewStreamFrom(const Gif_Stream *src) {
-	Gif_Stream *dest = Gif_New(Gif_Stream);
-	if (dest != NULL) {
-		if (!Gif_CopyStream(src, dest)) {
-			Gif_DeleteStream(dest);
-			return NULL;
-		}
-	}
-	return dest;
-}
-
-bool Gif_CopyStream(const Gif_Stream *src, Gif_Stream *dest)
+bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 {
+	if (!src || !Gif_InitStream(dest))
+		return false;
+
 	dest->background    = src->background;
 	dest->screen_width  = src->screen_width;
 	dest->screen_height = src->screen_height;
 	dest->loopcount     = src->loopcount;
-	if (!(dest->global  = Gif_CopyColormap(src->global)))
-		return false;
-	return true;
-}
+	dest->errors        = src->errors;
+	dest->user_flags    = src->user_flags;
+	dest->refcount      = src->refcount;
+	dest->landmark      = Gif_CopyString(src->landmark);
 
-bool Gif_CopyStreamImages(const Gif_Stream *src, Gif_Stream *dest)
-{
-	for (unsigned i = 0; i < src->nimages; i++) {
-		Gif_Image *gfi = Gif_NewImageFrom(src->images[i]);
-		if (!(gfi && Gif_AddImage(dest, gfi)))
+	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->global) {
+		if (!(dest->global = Gif_CopyColormap(src->global)))
 			return false;
+	}
+	if (!(no_copy_flags & NO_COPY_GIF_IMAGES) && src->nimages > 0) {
+		if (!(dest->images = Gif_NewArray(Gif_Image *, src->imagescap)))
+			return false;
+		for (int i = 0; i < src->nimages; i++) {
+			Gif_Image *gfi = Gif_NewImage();
+			if (!Gif_CopyImage(src->images[i], gfi))
+				return false;
+			gfi->refcount = src->images[i]->refcount;
+			gfi->user_flags = src->images[i]->user_flags;
+			dest->images[i] = gfi;
+		}
+		dest->end_comment        = dest->images[src->nimages - 1]->comment;
+		dest->end_extension_list = dest->images[src->nimages - 1]->extension_list;
+		dest->has_local_colors   = src->has_local_colors;
+		dest->nimages            = src->nimages;
+		dest->imagescap          = src->imagescap;
 	}
 	return true;
 }
@@ -638,7 +638,7 @@ void Gif_RemoveDeletionHook(int kind, void (*func)(int, void *, void *), void *c
 /* 
   Class Deconstructors
 */
-void Gif_DeleteStream(Gif_Stream *gfs)
+void Gif_FreeStream(Gif_Stream *gfs)
 {
 	DELETE_HOOK(gfs, GIF_T_STREAM);
 

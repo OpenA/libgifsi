@@ -353,8 +353,8 @@ read_image_data(struct GReadContext *gctx, Gif_Reader *grr)
 static Gif_Colormap *
 read_color_table(Gif_Reader *grr, const int ncol)
 {
-	Gif_Colormap *gfcm = Gif_NewColormap(ncol, ncol);
-	if (gfcm != NULL) {
+	Gif_Colormap *gfcm = Gif_New(Gif_Colormap);
+	if (Gif_InitColormap(gfcm, ncol, ncol)) {
 		GIF_DEBUG(("colormap(%d) ", ncol));
 		for (int i = 0; i < ncol; i++) {
 			gfcm->col[i].R = readUint8(grr);

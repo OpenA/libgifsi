@@ -612,8 +612,9 @@ static Gif_Colormap *_Ex_(make_opt_colormap)(
 	}
 
 	/* assign global colormap based on permutation */
-	Gif_Colormap *old_gcm =  gfs->global,
-	             *new_gcm = (gfs->global = Gif_NewColormap(nglobal_all, 256));
+	Gif_Colormap *new_gcm, *old_gcm = gfs->global;
+
+	Gif_NewColormap(new_gcm, nglobal_all);
 
 	for (c = 1; c < all_ncol; c++) {
 		if (ordering[c] < 256) {
@@ -626,6 +627,7 @@ static Gif_Colormap *_Ex_(make_opt_colormap)(
 	/* set the stream's background color */
 	if (bg_color != TColorEmpty)
 		gfs->background = ordering[bg_color];
+	gfs->global = new_gcm;
 
 	/* cleanup */
 	Gif_DeleteArray(penalty);
@@ -779,8 +781,8 @@ static void _Ex_(make_out_frames)(
 
 	if (!map) {
 		/* that didn't work; add a local colormap. */
-		map = prepare_colormap_for(gfi,
-			(gfi->local = Gif_NewColormap(0, 256)), complex_cm, opt->needed_colors, false);
+		Gif_NewColormap(gfi->local, 0);
+		map = prepare_colormap_for(gfi, gfi->local, complex_cm, opt->needed_colors, false);
 	}
 	/* find the new image's colormap and then make new data */
 	unsigned char *data = Gif_NewArray(unsigned char, (size_t)width * (size_t)height);

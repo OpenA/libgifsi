@@ -265,11 +265,13 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 	bool any_globals = false;
 
 	/* combine colormaps */
-	Gif_Colormap *gl_cmap = Gif_NewColormap(1, 384);
-	Gif_SetColor( gl_cmap->col[0], 255, 255, 255 );
+	Gif_Colormap *gl_cmap = Gif_New(Gif_Colormap);
+
+	if (Gif_InitColormap(gl_cmap, 1, 384))
+		Gif_SetColor(gl_cmap->col[0], 255, 255, 255);
 
 	if (!gfs->global) {
-		 gfs->global = Gif_NewColormap(256, 256);
+		Gif_NewColormap(gfs->global, 256);
 		for (i = 0; i < 256; i++)
 			Gif_SetColor(gfs->global->col[i], i, i, i);
 	}

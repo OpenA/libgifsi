@@ -184,11 +184,10 @@ struct Gif_Colormap {
 	Gif_Color *col;
 };
 
-//  Colormap construct, copy, destroy fn declare
-Gif_Colormap *Gif_NewColormap  (int, int);
-Gif_Colormap *Gif_CopyColormap (const Gif_Colormap *);
-bool          Gif_InitColormap       (Gif_Colormap *, int, int);
-void          Gif_DeleteColormap     (Gif_Colormap *);
+//  Colormap init/copy/destroy
+bool Gif_InitColormap(Gif_Colormap *gfcm, const int ncols, int capacity);
+bool Gif_CopyColormap(Gif_Colormap *dest, const Gif_Colormap *src);
+void Gif_FreeColormap(Gif_Colormap *);
 
 //  Colormap getters/setters/eq declare
 #define Gif_ColorEq(col1, col2)(\
@@ -340,7 +339,6 @@ void     Gif_Debug(char *x, ...);
 #endif
 
 /* Legacy */
-#define Gif_NewFullColormap    Gif_NewColormap
 #define Gif_ImageCount         Gif_GetImagesCount
 #define Gif_GetImage           Gif_GetImageByIndex
 #define Gif_GetNamedImage      Gif_GetImageByName
@@ -352,11 +350,13 @@ void     Gif_Debug(char *x, ...);
 #define Gif_Delete(p)                  free((void*)(p))
 #define Gif_DeleteArray(p)             free((void*)(p))
 
-#define Gif_NewStream(gfs) Gif_InitStream(gfs = Gif_New(Gif_Stream))
-#define Gif_NewImage(gfi)  Gif_InitImage (gfi = Gif_New(Gif_Image))
+#define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
+#define Gif_NewStream(gst)     Gif_InitStream(  gst = Gif_New(Gif_Stream))
+#define Gif_NewImage(gim)      Gif_InitImage(   gim = Gif_New(Gif_Image))
 
-#define Gif_DeleteStream   Gif_FreeStream
-#define Gif_DeleteImage    Gif_FreeImage
+#define Gif_DeleteColormap     Gif_FreeColormap
+#define Gif_DeleteStream       Gif_FreeStream
+#define Gif_DeleteImage        Gif_FreeImage
 
 #ifdef GIFSI_COMPILE_CPP
 

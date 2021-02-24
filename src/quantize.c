@@ -643,7 +643,7 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, unsigned *ncol, char alg, 
 		adapt_size--;
 
 	*ncol = kch.n;
-	 gfcm = Gif_NewColormap(adapt_size, 256);
+	Gif_NewColormap(gfcm, adapt_size);
 
 	if (alg == COLORMAP_MEDIAN_CUT) {
 		colormap_median_cut(&kch, gfcm);
@@ -1607,9 +1607,8 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Dithe
 	/* We may have used only a subset of the colors in new_colmap. We try to store
 	   only that subset, just as if we'd piped the output of 'gifsicle
 	   --use-colormap=X' through 'gifsicle' another time. */
-	unmark_pixels(
-		(gfs->global = Gif_CopyColormap(new_colmap))
-	);
+	if (Gif_CopyColormap(gfs->global = Gif_New(Gif_Colormap), new_colmap))
+		unmark_pixels(gfs->global);
 
 	if (compress_new_cm) {
 		/* only bother to recompress if we'll get anything out of it */

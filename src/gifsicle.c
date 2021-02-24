@@ -865,27 +865,27 @@ input_done(void)
 static void
 set_new_fixed_colormap(const char *name)
 {
+  Gif_Colormap *cm;
   int i;
   if (name && strcmp(name, "web") == 0) {
-    Gif_Colormap *cm = Gif_NewFullColormap(216, 256);
-    Gif_Color *col = cm->col;
+    Gif_NewColormap(cm, 216);
     for (i = 0; i < 216; i++) {
-      col[i].R =  (i / 36)      * 0x33;
-      col[i].G = ((i /  6) % 6) * 0x33;
-      col[i].B =  (i %  6)      * 0x33;
+      Gif_SetColor(cm->col[i],
+         (i / 36)      * 0x33,
+        ((i /  6) % 6) * 0x33,
+         (i %  6)      * 0x33);
     }
     def_output_data.colormap_fixed = cm;
 
   } else if (name && (strcmp(name, "gray") == 0
                       || strcmp(name, "grey") == 0)) {
-    Gif_Colormap *cm = Gif_NewFullColormap(256, 256);
-    Gif_Color *col = cm->col;
+    Gif_NewColormap(cm, 256);
     for (i = 0; i < 256; i++)
-      Gif_SetColor(col[i], i, i, i);
+      Gif_SetColor(cm->col[i], i, i, i);
     def_output_data.colormap_fixed = cm;
 
   } else if (name && strcmp(name, "bw") == 0) {
-    Gif_Colormap *cm = Gif_NewFullColormap(2, 256);
+    Gif_NewColormap(cm, 2);
     Gif_SetColor(cm->col[0], 0, 0, 0);
     Gif_SetColor(cm->col[1], 255, 255, 255);
     def_output_data.colormap_fixed = cm;

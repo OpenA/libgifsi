@@ -282,7 +282,7 @@ compare(Gif_Stream *s1, Gif_Stream *s2)
   /* Merge all distinct colors from the two images into one colormap, setting
      the 'pixel' slots in the images' colormaps to the corresponding values
      in the merged colormap. Don't forget transparency */
-  newcm = Gif_NewFullColormap(1, 256);
+  Gif_NewColormap(newcm, 1);
   combine_colormaps(s1->global, newcm);
   combine_colormaps(s2->global, newcm);
   for (imageno1 = 0; imageno1 < s1->nimages; ++imageno1)

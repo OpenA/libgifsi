@@ -867,11 +867,12 @@ static Gif_Colormap *
 read_text_colormap(FILE *f, const char *name)
 {
   char buf[BUFSIZ];
-  Gif_Colormap *cm = Gif_NewFullColormap(0, 256);
-  Gif_Color *col = cm->col;
+  Gif_Colormap *cm;
   int ncol = 0;
   unsigned red, green, blue;
   float fred, fgreen, fblue;
+
+  Gif_NewColormap(cm, 0);
 
   while (fgets(buf, BUFSIZ, f)) {
 
@@ -905,7 +906,7 @@ read_text_colormap(FILE *f, const char *name)
         lerror(name, "maximum 256 colors allowed in colormap");
         break;
       } else {
-        Gif_SetColor(col[ncol], red, green, blue);
+        Gif_SetColor(cm->col[ncol], red, green, blue);
         ncol++;
       }
     }
@@ -970,7 +971,8 @@ read_colormap_file(const char *name, FILE *f)
     else {
       if (gfs->errors)
         lwarning(name, "there were errors reading this GIF");
-      cm = Gif_CopyColormap(gfs->global ? gfs->global : gfs->images[0]->local);
+      cm = Gif_New(Gif_Colormap);
+      Gif_CopyColormap(cm, (gfs->global ?: gfs->images[0]->local));
     }
 
     Gif_DeleteStream(gfs);
@@ -1471,11 +1473,10 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
                      int *huge_stream)
 {
   Gif_Stream *dest;
-  Gif_Colormap *global = Gif_NewColormap(0, 256);
   int i, same_compressed_ok, all_same_compressed_ok;
 
   if (Gif_NewStream(dest)) {
-    dest->global = global;
+    Gif_NewColormap(dest->global, 0);
     dest->landmark = output_data->active_output_name ?: NULL;
   }
   /* 11/23/98 A new stream's screen size is 0x0; we'll use the max of the

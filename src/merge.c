@@ -275,7 +275,7 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
 
   } else {
       /* Need a local colormap. */
-      destcm = localcm = Gif_NewFullColormap(0, 256);
+      Gif_NewColormap(destcm = localcm, 0);
       for (i = 0; i != imagecm_ncol; ++i)
           if (inused[i]) {
               map[i] = localcm->ncol;

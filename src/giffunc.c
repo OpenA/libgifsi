@@ -47,7 +47,8 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 	dest->landmark      = Gif_CopyString(src->landmark);
 
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->global) {
-		if (!(dest->global = Gif_CopyColormap(src->global)))
+		dest->global = Gif_New(Gif_Colormap);
+		if (!Gif_CopyColormap(dest->global, src->global))
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_IMAGES) && src->nimages > 0) {
@@ -133,7 +134,8 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 		}
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->local) {
-		if (!(dest->local = Gif_CopyColormap(src->local)))
+		dest->local = Gif_New(Gif_Colormap);
+		if (!Gif_CopyColormap(dest->local, src->local))
 			return false;
 	}
 	if (src->img) {
@@ -165,25 +167,13 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 /*
   Colormap constructor functions & methods
 */
-Gif_Colormap *
-Gif_NewColormap(int count, int capacity) {
-	if (capacity <= 0 || count < 0)
-		return NULL;
-
-	Gif_Colormap *gfcm = Gif_New(Gif_Colormap);
-	if (gfcm != NULL) {
-		if (!Gif_InitColormap(gfcm, count, capacity)) {
-			Gif_DeleteColormap(gfcm);
-			return NULL;
-		}
-	}
-	return gfcm;
-}
-
-bool Gif_InitColormap(Gif_Colormap *gfcm, int count, int capacity) {
-	if (count > capacity)
-		capacity    = count;
-	gfcm->ncol      = count;
+bool Gif_InitColormap(Gif_Colormap *gfcm, const int ncols, int capacity)
+{
+	if (ncols < 0 || capacity <= 0 || !gfcm)
+		return false;
+	if (ncols > capacity)
+		capacity    = ncols;
+	gfcm->ncol      = ncols;
 	gfcm->capacity  = capacity;
 	gfcm->refcount  = gfcm->user_flags = 0;
 	if (!(gfcm->col = Gif_NewArray(Gif_Color, capacity)))
@@ -191,15 +181,12 @@ bool Gif_InitColormap(Gif_Colormap *gfcm, int count, int capacity) {
 	return true;
 }
 
-Gif_Colormap *
-Gif_CopyColormap(const Gif_Colormap *src) {
-	if (!src)
-		return NULL;
-	Gif_Colormap *dest = Gif_NewColormap(src->ncol, src->capacity);
-	if (!dest)
-		return NULL;
-	memcpy(dest->col, src->col, sizeof(src->col[0]) * src->ncol);
-	return dest;
+bool Gif_CopyColormap(Gif_Colormap *dest, const Gif_Colormap *src)
+{
+	if (!src || !Gif_InitColormap(dest, src->ncol, src->capacity))
+		return false;
+	memcpy(dest->col, src->col, sizeof(Gif_Color) * src->ncol);
+	return true;
 }
 
 int Gif_IndexOfColor(Gif_Color *arr, const int len, const Gif_Color col)
@@ -659,7 +646,7 @@ void Gif_FreeImage(Gif_Image *gfi)
 	Gif_Delete(gfi);
 }
 
-void Gif_DeleteColormap(Gif_Colormap *gfcm)
+void Gif_FreeColormap(Gif_Colormap *gfcm)
 {
 	DELETE_HOOK(gfcm, GIF_T_COLORMAP);
 	Gif_DeleteArray(gfcm->col);

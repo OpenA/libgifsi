@@ -323,7 +323,7 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
 
   assert(destcm->ncol <= 256);
   /* Make the new image. */
-  desti = Gif_NewImage();
+  Gif_NewImage(desti);
 
   desti->identifier = Gif_CopyString(srci->identifier);
   if (srci->transparent > -1)

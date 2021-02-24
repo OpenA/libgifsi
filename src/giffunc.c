@@ -51,18 +51,17 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_IMAGES) && src->nimages > 0) {
+		Gif_Image *last_gfi;
 		if (!(dest->images = Gif_NewArray(Gif_Image *, src->imagescap)))
 			return false;
 		for (int i = 0; i < src->nimages; i++) {
-			Gif_Image *gfi = Gif_NewImage();
-			if (!Gif_CopyImage(src->images[i], gfi))
+			last_gfi = Gif_New(Gif_Image);
+			if (!Gif_CopyImage(last_gfi, src->images[i], no_copy_flags))
 				return false;
-			gfi->refcount = src->images[i]->refcount;
-			gfi->user_flags = src->images[i]->user_flags;
-			dest->images[i] = gfi;
+			dest->images[i] = last_gfi;
 		}
-		dest->end_comment        = dest->images[src->nimages - 1]->comment;
-		dest->end_extension_list = dest->images[src->nimages - 1]->extension_list;
+		dest->end_comment        = last_gfi->comment;
+		dest->end_extension_list = last_gfi->extension_list;
 		dest->has_local_colors   = src->has_local_colors;
 		dest->nimages            = src->nimages;
 		dest->imagescap          = src->imagescap;
@@ -74,16 +73,10 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 /*
   Image constructor functions
 */
-Gif_Image *
-Gif_NewImage(void) {
-	Gif_Image *gfi = Gif_New(Gif_Image);
-	if (gfi != NULL)
-		Gif_InitImage(gfi);
-	return gfi;
-}
-
-void Gif_InitImage(Gif_Image *gfi)
+bool Gif_InitImage(Gif_Image *gfi)
 {
+	if (!gfi)
+		return false;
 	gfi->width = gfi->height = 0;
 	gfi->img = NULL;
 	gfi->image_data = NULL;
@@ -97,48 +90,17 @@ void Gif_InitImage(Gif_Image *gfi)
 	gfi->identifier = NULL;
 	gfi->comment = NULL;
 	gfi->extension_list = NULL;
-	gfi->free_image_data = Gif_Free;
 	gfi->compressed_len = 0;
 	gfi->compressed_errors = 0;
 	gfi->compressed = NULL;
 	gfi->free_compressed = NULL;
 	gfi->refcount = 0;
+	return true;
 }
 
-Gif_Image *
-Gif_NewImageFrom(const Gif_Image *src) {
-	if (!src)
-		return NULL;
-	Gif_Image *dest = Gif_NewImage();
-	if (!(dest && Gif_CopyImage(src, dest))) {
-		Gif_DeleteImage(dest);
-		return NULL;
-	}
-	return dest;
-}
-
-bool Gif_CopyImage(const Gif_Image *src, Gif_Image *dest)
+bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 {
-	if (src->identifier && !(dest->identifier = Gif_CopyString(src->identifier)))
-		return false;
-	if (src->comment) {
-		if (!(dest->comment = Gif_NewComment()))
-			return false;
-		for (int i = 0; i < src->comment->count; i++) {
-			if (!Gif_AddComment(dest->comment, src->comment->str[i], src->comment->len[i]))
-				return false;
-		}
-	}
-	if (src->extension_list) {
-		Gif_Extension* gfex = src->extension_list;
-		while (gfex) {
-			Gif_Extension* dstex = Gif_NewExtensionFrom(gfex);
-			if (!(dstex && Gif_AddExtension(NULL, dest, dstex)))
-				return false;
-			gfex = gfex->next;
-		}
-	}
-	if (src->local && !(dest->local = Gif_CopyColormap(src->local)))
+	if (!src || !Gif_InitImage(dest))
 		return false;
 
 	dest->transparent = src->transparent;
@@ -149,7 +111,31 @@ bool Gif_CopyImage(const Gif_Image *src, Gif_Image *dest)
 	dest->width       = src->width;
 	dest->height      = src->height;
 	dest->interlace   = src->interlace;
+	dest->user_flags  = src->user_flags;
+	dest->refcount    = src->refcount;
+	dest->identifier  = Gif_CopyString(src->identifier);
 
+	if (!(no_copy_flags & NO_COPY_GIF_COMMENTS) && src->comment) {
+		if (!(dest->comment = Gif_NewComment()))
+			return false;
+		for (int i = 0; i < src->comment->count; i++) {
+			if (!Gif_AddComment(dest->comment, src->comment->str[i], src->comment->len[i]))
+				return false;
+		}
+	}
+	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->extension_list) {
+		Gif_Extension* gfex = src->extension_list;
+		while (gfex) {
+			Gif_Extension* dstex = Gif_NewExtensionFrom(gfex);
+			if (!(dstex && Gif_AddExtension(NULL, dest, dstex)))
+				return false;
+			gfex = gfex->next;
+		}
+	}
+	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->local) {
+		if (!(dest->local = Gif_CopyColormap(src->local)))
+			return false;
+	}
 	if (src->img) {
 		dest->img = Gif_NewArray(unsigned char *, dest->height + 1);
 		dest->image_data = Gif_NewArray(unsigned char, (size_t)dest->width * (size_t)dest->height);
@@ -161,17 +147,14 @@ bool Gif_CopyImage(const Gif_Image *src, Gif_Image *dest)
 			dest->img[i] = data;
 			data += dest->width;
 		}
-		dest->free_image_data   = Gif_Free;
 		dest->img[dest->height] = 0;
 	}
 	if (src->compressed) {
-		if (src->free_compressed == 0) {
-			dest->compressed = src->compressed;
-		} else {
-			dest->compressed = Gif_NewArray(unsigned char, src->compressed_len);
-			dest->free_compressed = Gif_Free;
-			memcpy(dest->compressed, src->compressed, src->compressed_len);
-		}
+		dest->compressed = Gif_NewArray(unsigned char, src->compressed_len);
+		if (!dest->compressed)
+			return false;
+		dest->free_compressed = Gif_Free;
+		memcpy(dest->compressed, src->compressed, src->compressed_len);
 		dest->compressed_len = src->compressed_len;
 		dest->compressed_errors = src->compressed_errors;
 	}
@@ -543,7 +526,6 @@ bool Gif_SetUncompressedImage(Gif_Image *gfi, unsigned char *image_data,
 	img[height] = 0;
 	gfi->img = img;
 	gfi->image_data = image_data;
-	gfi->free_image_data = free_data;
 	return true;
 }
 
@@ -555,11 +537,10 @@ bool Gif_CreateUncompressedImage(Gif_Image *gfi, bool data_interlaced) {
 
 void Gif_ReleaseUncompressedImage(Gif_Image *gfi) {
 	Gif_DeleteArray(gfi->img);
-	if (gfi->image_data && gfi->free_image_data)
-		(*gfi->free_image_data)(gfi->image_data);
+	if (gfi->image_data)
+		Gif_Delete(gfi->image_data);
 	gfi->img = NULL;
 	gfi->image_data = NULL;
-	gfi->free_image_data = NULL;
 }
 
 void Gif_ReleaseCompressedImage(Gif_Image *gfi) {
@@ -655,7 +636,7 @@ void Gif_FreeStream(Gif_Stream *gfs)
 	Gif_Delete(gfs);
 }
 
-void Gif_DeleteImage(Gif_Image *gfi)
+void Gif_FreeImage(Gif_Image *gfi)
 {
 	DELETE_HOOK(gfi, GIF_T_IMAGE);
 
@@ -667,8 +648,8 @@ void Gif_DeleteImage(Gif_Image *gfi)
 
 	Gif_DeleteColormap(gfi->local);
 
-	if (gfi->image_data && gfi->free_image_data)
-		(*gfi->free_image_data)((void *)gfi->image_data);
+	if (gfi->image_data)
+		Gif_Delete(gfi->image_data);
 
 	Gif_DeleteArray(gfi->img);
 

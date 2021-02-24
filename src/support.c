@@ -1563,7 +1563,8 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
     fr->left_offset = fr->top_offset = 0;
     if (fr->crop) {
       int preserve_total_crop;
-      srci = Gif_NewImageFrom(fr->image);
+      srci = Gif_New(Gif_Image);
+      Gif_CopyImage(srci, fr->image, 0);
       Gif_UncompressImage(fr->stream, srci);
 
       /* Zero-delay frames are a special case.  You might think it was OK to

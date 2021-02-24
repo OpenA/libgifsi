@@ -700,7 +700,7 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 
 	if (!Gif_NewStream(gfs = gctx.stream))
 		goto done;
-	if (!(gfi = gctx.img = Gif_NewImage())) {
+	if (!Gif_NewImage(gfi = gctx.img)) {
 		Gif_Delete(gfs);
 		goto done;
 	}
@@ -728,7 +728,7 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 				gfi = NULL;
 				goto done;
 			}
-			if (!(gfi = gctx.img = Gif_NewImage()))
+			if (!Gif_NewImage(gfi = gctx.img))
 				goto done;
 			break;
 
@@ -799,6 +799,11 @@ done:
 		emit_read_error(&gctx, 0, "trailing garbage after GIF ignored");
 	/* finally, export last message */
 	emit_read_error(&gctx, -1, NULL);
+	/* test copy chain
+	Gif_Stream *newgfs = Gif_New(Gif_Stream);
+	Gif_CopyStream(newgfs, gfs, NO_COPY_GIF_EXTENSIONS | NO_COPY_GIF_COMMENTS);
+	Gif_FreeStream(gfs);
+	gfs = newgfs; */
 
 	return gfs;
 }

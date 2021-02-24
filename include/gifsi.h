@@ -123,8 +123,6 @@ struct Gif_Image {
 	Gif_Comment* comment;
 	Gif_Extension* extension_list;
 
-	void (*free_image_data)(void *);
-
 	unsigned int   compressed_len;
 	unsigned int   compressed_errors;
 	unsigned char* compressed;
@@ -134,12 +132,10 @@ struct Gif_Image {
 	int refcount;
 };
 
-//  Image construct, copy, destroy fn declare
-Gif_Image * Gif_NewImage(void);
-Gif_Image * Gif_NewImageFrom    (const Gif_Image *);
-bool        Gif_CopyImage       (const Gif_Image *, Gif_Image *);
-void        Gif_InitImage             (Gif_Image *);
-void        Gif_DeleteImage           (Gif_Image *);
+//  Image init/copy/destroy
+bool Gif_InitImage(Gif_Image *);
+bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags);
+void Gif_FreeImage(Gif_Image *);
 
 //  Image getters
 #define Gif_GetImageColorBound(gfi) (gfi->compressed && gfi->compressed[0] > 0 && gfi->compressed[0] < 8 ? 1 << gfi->compressed[0] : 256)
@@ -357,8 +353,10 @@ void     Gif_Debug(char *x, ...);
 #define Gif_DeleteArray(p)             free((void*)(p))
 
 #define Gif_NewStream(gfs) Gif_InitStream(gfs = Gif_New(Gif_Stream))
+#define Gif_NewImage(gfi)  Gif_InitImage (gfi = Gif_New(Gif_Image))
 
 #define Gif_DeleteStream   Gif_FreeStream
+#define Gif_DeleteImage    Gif_FreeImage
 
 #ifdef GIFSI_COMPILE_CPP
 

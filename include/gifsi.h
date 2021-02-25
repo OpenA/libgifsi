@@ -85,14 +85,15 @@ void Gif_FreeStream(Gif_Stream *);
 #define Gif_GetImageByName(gfs,n)  (gfs->nimages <= 0          ? NULL : !n ? gfs->images[0] : Gif_ImageByName( gfs->images, gfs->nimages, n))
 #define Gif_GetIndexOfImage(gfs,m) (gfs->nimages <= 0 || !m    ?   -1                       : Gif_IndexOfImage(gfs->images, gfs->nimages, m))
 
-//  Stream others methods declare
-bool        Gif_AddExtension          (Gif_Stream *, Gif_Image *, Gif_Extension *);
-bool        Gif_AddImage              (Gif_Stream *, Gif_Image *);
-void        Gif_RemoveImage           (Gif_Stream *, unsigned);
-void        Gif_CalculateScreenSize   (Gif_Stream *, bool);
-bool        Gif_FullUnoptimize        (Gif_Stream *, int);
+//  Stream other methods
+void Gif_AddExtension  (Gif_Stream *, Gif_Image *, Gif_Extension *);
+int  Gif_PutImage      (Gif_Stream *, Gif_Image *);
+void Gif_RemoveImage   (Gif_Stream *, int  index);
+void Gif_CalcScreenSize(Gif_Stream *, bool force);
+bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
 
-//  Stream renamed functions
+//  Stream substitution macroses
+#define Gif_AddImage(gst,gim) (void)Gif_PutImage(gst,gim)
 #define Gif_Unoptimize(gfs)    Gif_FullUnoptimize(gfs, 0)
 
 
@@ -340,6 +341,7 @@ void     Gif_Debug(char *x, ...);
 #endif
 
 /* Legacy */
+#define Gif_CalculateScreenSize Gif_CalcScreenSize
 #define Gif_ImageCount         Gif_GetImagesCount
 #define Gif_GetImage           Gif_GetImageByIndex
 #define Gif_GetNamedImage      Gif_GetImageByName

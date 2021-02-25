@@ -169,7 +169,7 @@ no_more_transparency(Gif_Image *gfi1, Gif_Image *gfi2)
 }
 
 
-bool Gif_FullUnoptimize(Gif_Stream *gfs, int flags)
+bool Gif_FullUnoptimize(Gif_Stream *gfs, char unopt_flags)
 {
 	unsigned pos, size;
 	unsigned short *screen, background;
@@ -184,7 +184,7 @@ bool Gif_FullUnoptimize(Gif_Stream *gfs, int flags)
 	if (!gfs->global)
 		return false;
 
-	Gif_CalculateScreenSize(gfs, false);
+	Gif_CalcScreenSize(gfs, false);
 
 	gfi    = gfs->images[0];
 	size   = gfs->screen_width * gfs->screen_height;
@@ -202,7 +202,7 @@ bool Gif_FullUnoptimize(Gif_Stream *gfs, int flags)
 			return false;
 		}
 	}
-	if (flags & GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL) {
+	if (unopt_flags & GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL) {
 	/* set disposal based on use of transparency.
 		If (every transparent pixel in frame i is also transparent in frame
 		i - 1), then frame i - 1 gets disposal ASIS; otherwise, disposal

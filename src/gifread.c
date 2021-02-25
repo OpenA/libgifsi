@@ -614,12 +614,12 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 			skipBytes(grr, size);
 			continue;
 		}
-		Gif_ReArray(data, unsigned char, len + size + 2);
-		if (!(skip = !data)) {
+		if (Gif_ReArray(data, unsigned char, len + size + 2)) {
 			data[len] = size;
 			readChunk(grr, data + len + 1, size);
 			len += size + 1;
-		}
+		} else
+			skip = true;
 	}
 	if (data)
 		gext = Gif_New(Gif_Extension);
@@ -627,8 +627,8 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 		gext->data       = data;
 		gext->length     = len;
 		gext->packetized = 1;
-		/* */ data[len]  = 0;
-		/* */ skip       = Gif_AddExtension(gfs, gfi, gext);
+		gext->data[len]  = 0;
+		Gif_AddExtension(gfs, gfi, gext);
 	} else
 		Gif_DeleteArray(data);
 }
@@ -720,10 +720,10 @@ read_gif(Gif_Reader *grr, int flags, const char* landmark,
 			gfi->identifier = last_name;
 			last_name = NULL;
 
-			if (!Gif_AddImage(gfs, gfi))
+			if (Gif_PutImage(gfs, gfi) == -1)
 				goto done;
 			else if (!read_image(&gctx, grr, gfs, gfi, flags)) {
-				Gif_RemoveImage(gfs, gfs->nimages - 1);
+				Gif_RemoveImage(gfs, -1);
 				gfi = NULL;
 				goto done;
 			}
@@ -802,7 +802,7 @@ done:
 	Gif_Stream *newgfs = Gif_New(Gif_Stream);
 	Gif_CopyStream(newgfs, gfs, NO_COPY_GIF_EXTENSIONS | NO_COPY_GIF_COMMENTS);
 	Gif_FreeStream(gfs);
-	gfs = newgfs; */
+	Gif_RemoveImage(gfs = newgfs, -1); */
 
 	return gfs;
 }

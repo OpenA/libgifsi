@@ -807,7 +807,7 @@ write_logical_screen_descriptor(Gif_Stream *gfs, Gif_Writer *grr)
 	unsigned char packed = 0x70; /* high resolution colors */
 	unsigned i, g_size = (grr->global_size = get_color_table_size(gfs, 0, grr));
 
-	Gif_CalculateScreenSize(gfs, 0);
+	Gif_CalcScreenSize(gfs, false);
 	writeUint16(gfs->screen_width , grr);
 	writeUint16(gfs->screen_height, grr);
 

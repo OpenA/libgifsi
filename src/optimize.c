@@ -300,7 +300,7 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 		gl_cmap->col[TColorEmpty] = gfcm->col[gfi->transparent];
 	}
 	/* find screen_width and screen_height, and clip all images to screen */
-	Gif_CalculateScreenSize(gfs, 0);
+	Gif_CalcScreenSize(gfs, false);
 
 	/* Screen width and height */
 	unsigned short MAX_W = gfs->screen_width,

@@ -378,10 +378,10 @@ int Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img)
 	return -1;
 }
 
-bool Gif_AddExtension(Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex)
+void Gif_AddExtension(Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex)
 {
 	if (gfex->stream || gfex->image)
-		return false;
+		return;
 	Gif_Extension **pprev = (
 		gfi ? &gfi->extension_list : &gfs->end_extension_list);
 	while(*pprev)
@@ -390,44 +390,44 @@ bool Gif_AddExtension(Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex)
 	gfex->stream = gfs;
 	gfex->image  = gfi;
 	gfex->next   = NULL;
-	return true;
 }
 
-bool Gif_AddImage(Gif_Stream *gfs, Gif_Image *gfi)
+int Gif_PutImage(Gif_Stream *gfs, Gif_Image *gfi)
 {
-	if (gfs->nimages  >= gfs->imagescap) {
+	const int max_idx = gfs->nimages;
+	if (gfs->imagescap <= max_idx) {
 		gfs->imagescap = gfs->imagescap ? gfs->imagescap * 2 : 2;
-		Gif_ReArray(gfs->images, Gif_Image *, gfs->imagescap);
-		if (!gfs->images)
-			return false;
+		if (!Gif_ReArray(gfs->images, Gif_Image *, gfs->imagescap))
+			return -1;
 	}
-	gfs->images[gfs->nimages] = gfi;
+	gfs->images[max_idx] = gfi;
 	gfs->nimages++, gfi->refcount++;
-	return true;
+	return max_idx;
 }
 
-void Gif_RemoveImage(Gif_Stream *gfs, unsigned inum)
+void Gif_RemoveImage(Gif_Stream *gfs, int idx)
 {
-	if (inum >= gfs->nimages)
-		return;
-	Gif_DeleteImage(gfs->images[inum]);
-	for (unsigned j = inum; j < gfs->nimages - 1; j++)
-		gfs->images[j] = gfs->images[j + 1];
-	gfs->nimages--;
+	if (idx < 0)
+		idx += gfs->nimages;
+	int max_idx = --gfs->nimages;
+	Gif_FreeImage(gfs->images[idx]);
+	for (; idx < max_idx; idx++)
+		gfs->images[idx] = gfs->images[idx + 1];
+	gfs->images[max_idx] = NULL;
 }
 
-void Gif_CalculateScreenSize(Gif_Stream *gfs, bool force)
+void Gif_CalcScreenSize(Gif_Stream *gfs, bool force)
 {
-	unsigned screen_width = 0, screen_height = 0;
+	unsigned short screen_width = 0, screen_height = 0;
 
 	for (unsigned i = 0; i < gfs->nimages; i++) {
-		Gif_Image *gfi = gfs->images[i];
-		/* 17.Dec.1999 - I find this old behavior annoying. */
-		/* if (gfi->left != 0 || gfi->top != 0) continue; */
-		if (screen_width < gfi->left + gfi->width)
-			screen_width = gfi->left + gfi->width;
-		if (screen_height < gfi->top + gfi->height)
-			screen_height = gfi->top + gfi->height;
+		unsigned width = gfs->images[i]->left + gfs->images[i]->width,
+		        height = gfs->images[i]->top  + gfs->images[i]->height;
+
+		if (screen_width < width)
+			screen_width = width;
+		if (screen_height < height)
+			screen_height = height;
 	}
 	/* Only use the default 640x480 screen size if we are being forced to create
 		a new screen size or there's no screen size currently. */

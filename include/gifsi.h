@@ -321,15 +321,6 @@ Gif_Image *Gif_ImageByName (Gif_Image **arr, const int len, const char *name);
 int        Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img);
 int        Gif_IndexOfColor(Gif_Color * arr, const int len, const Gif_Color  col);
 
-#define GIF_T_STREAM   0
-#define GIF_T_IMAGE    1
-#define GIF_T_COLORMAP 2
-
-typedef void (*Gif_DeletionHookFunc)(int, void *, void *);
-
-bool Gif_AddDeletionHook    (int, Gif_DeletionHookFunc, void *);
-void Gif_RemoveDeletionHook (int, Gif_DeletionHookFunc, void *);
-
 #ifdef GIF_DEBUGGING
 # include <stdarg.h>
 # define GIF_DEBUG(x) Gif_Debug x

@@ -532,66 +532,15 @@ void Gif_MakeImageEmpty(Gif_Image* gfi) {
 }
 
 
-/* DELETION HOOKS */
-typedef struct Gif_DeletionHook {
-	int kind;
-	Gif_DeletionHookFunc func;
-	void *callback_data;
-	struct Gif_DeletionHook *next;
-} Gif_DeletionHook;
-
-static Gif_DeletionHook *all_hooks;
-
-#define DELETE_HOOK(obj, _TYPE_) \
-	if (!obj || --obj->refcount > 0) \
-		return; \
-	for (Gif_DeletionHook *hook = all_hooks; hook; hook = hook->next) { \
-		if (hook->kind == _TYPE_) \
-			(*hook->func)(_TYPE_, obj, hook->callback_data); \
-	}
-
-
-bool Gif_AddDeletionHook(int kind, void (*func)(int, void *, void *), void *cb)
-{
-	Gif_DeletionHook *hook = Gif_New(Gif_DeletionHook);
-	if (!hook)
-		return false;
-	Gif_RemoveDeletionHook(kind, func, cb);
-	hook->callback_data = cb;
-	hook->kind = kind;
-	hook->func = func;
-	hook->next = all_hooks;
-	all_hooks  = hook;
-	return true;
-}
-
-void Gif_RemoveDeletionHook(int kind, void (*func)(int, void *, void *), void *cb)
-{
-	Gif_DeletionHook *hook = all_hooks, *prev = NULL;
-	while  (hook) {
-		if (hook->kind == kind &&
-			hook->func == func &&
-			hook->callback_data == cb
-		) {
-			if (prev)
-				prev->next = hook->next;
-			else
-				all_hooks  = hook->next;
-			Gif_Delete(hook);
-			return;
-		}
-		prev = hook;
-		hook = hook->next;
-	}
-}
-
-
 /* 
   Class Deconstructors
 */
+#define CHECK_REF(obj) \
+	if (!obj || --obj->refcount > 0) return
+
 void Gif_FreeStream(Gif_Stream *gfs)
 {
-	DELETE_HOOK(gfs, GIF_T_STREAM);
+	CHECK_REF(gfs);
 
 	for (int i = 0; i < gfs->nimages; i++)
 		Gif_DeleteImage(gfs->images[i]);
@@ -608,7 +557,7 @@ void Gif_FreeStream(Gif_Stream *gfs)
 
 void Gif_FreeImage(Gif_Image *gfi)
 {
-	DELETE_HOOK(gfi, GIF_T_IMAGE);
+	CHECK_REF(gfi);
 
 	Gif_DeleteArray(gfi->identifier);
 	Gif_DeleteComment(gfi->comment);
@@ -631,7 +580,7 @@ void Gif_FreeImage(Gif_Image *gfi)
 
 void Gif_FreeColormap(Gif_Colormap *gfcm)
 {
-	DELETE_HOOK(gfcm, GIF_T_COLORMAP);
+	CHECK_REF(gfcm);
 	Gif_DeleteArray(gfcm->col);
 	Gif_Delete(gfcm);
 }

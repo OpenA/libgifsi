@@ -51,7 +51,7 @@ typedef struct Gif_Extension  Gif_Extension;
 //  Stream class
 struct Gif_Stream {
 	Gif_Image **images;
-	unsigned int nimages, imagescap;
+	unsigned int imgscap;
 
 	Gif_Colormap  *global;
 	Gif_Comment   *end_comment;
@@ -62,10 +62,10 @@ struct Gif_Stream {
 
 	bool has_local_colors;
 
-	int loopcount, refcount;    /* -1 means no loop count */
+	int loopcount, nimages; /* -1 means no loop count */
 
 	unsigned int errors;
-	unsigned int user_flags;
+	int user_flags, refcount;
 
 	const char* landmark;
 
@@ -129,8 +129,7 @@ struct Gif_Image {
 	unsigned char* compressed;
 	void (*free_compressed)(void *);
 
-	unsigned int user_flags;
-	int refcount;
+	int user_flags, refcount;
 };
 
 //  Image init/copy/destroy
@@ -180,8 +179,7 @@ typedef struct {
 //  Colormap class
 struct Gif_Colormap {
 	int ncol, capacity;
-	unsigned int user_flags;
-	int refcount;
+	int user_flags, refcount;
 	Gif_Color *col;
 };
 

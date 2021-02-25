@@ -260,8 +260,7 @@ error:
  **/
 static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 {
-	unsigned i, t;
-	int first_transparent = -1;
+	int i, first_transparent = -1;
 	bool any_globals = false;
 
 	/* combine colormaps */
@@ -320,7 +319,7 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 {
 	/* 11.Mar.2010 - remove entirely transparent frames. */
-	for (unsigned i = 1; i < gfs->nimages && del_empty; i++) {
+	for (int i = 1; i < gfs->nimages && del_empty; i++) {
 		Gif_Image *curr = gfs->images[i];
 		Gif_Image *prev = gfs->images[i - 1];
 		if (curr->width  == 1 && !curr->identifier &&
@@ -346,7 +345,7 @@ static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 	  semantically "wrong" -- it's better to set the disposal explicitly than
 	  rely on default behavior -- but will result in smaller GIF files, since
 	  the graphic control extension can be left off in many cases. */
-	for (unsigned i = 0; i < gfs->nimages; i++) {
+	for (int i = 0; i < gfs->nimages; i++) {
 		Gif_Image *curr = gfs->images[i];
 		if (curr->disposal == GD_Asis && !curr->delay && curr->transparent < 0)
 			curr->disposal = GD_None;
@@ -373,7 +372,7 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 {
 	unsigned bg_color;
 
-	if (!gfs->nimages)
+	if (gfs->nimages <= 0)
 		return;
 
 	/* Colormap containing all colors in the image. May have >256 colors */

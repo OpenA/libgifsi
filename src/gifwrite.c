@@ -944,7 +944,7 @@ static bool
 write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 {
 	Gif_Extension* gfex;
-	unsigned i;
+	int i;
 	bool isgif89a = false;
 
 	if (gfs->end_comment || gfs->end_extension_list || gfs->loopcount > -1) {

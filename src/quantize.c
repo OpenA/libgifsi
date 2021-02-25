@@ -1504,8 +1504,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Dithe
 {
 	kd3_tree kd3;
 	Gif_Color *new_col = new_colmap->col;
-	int new_ncol = new_colmap->ncol;
-	unsigned i, j;
+	int i, j, new_ncol = new_colmap->ncol;
 	bool compress_new_cm = true, new_gray = true;
 
 	/* make sure colormap has enough space */

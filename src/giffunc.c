@@ -17,7 +17,7 @@ bool Gif_InitStream(Gif_Stream *gfs)
 	if (!gfs)
 		return false;
 	gfs->images = NULL;
-	gfs->nimages = gfs->imagescap = 0;
+	gfs->nimages = gfs->imgscap = 0;
 	gfs->global = NULL;
 	gfs->background = 256;
 	gfs->screen_width = gfs->screen_height = 0;
@@ -26,8 +26,7 @@ bool Gif_InitStream(Gif_Stream *gfs)
 	gfs->end_extension_list = NULL;
 	gfs->has_local_colors = false;
 	gfs->errors = 0;
-	gfs->user_flags = 0;
-	gfs->refcount = 0;
+	gfs->user_flags = gfs->refcount = 0;
 	gfs->landmark = NULL;
 	return true;
 }
@@ -52,8 +51,8 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_IMAGES) && src->nimages > 0) {
-		Gif_Image *last_gfi;
-		if (!(dest->images = Gif_NewArray(Gif_Image *, src->imagescap)))
+		Gif_Image *last_gfi; /* there is no reason for copy imgscap */
+		if (!(dest->images = Gif_NewArray(Gif_Image *, dest->imgscap = src->nimages)))
 			return false;
 		for (int i = 0; i < src->nimages; i++) {
 			last_gfi = Gif_New(Gif_Image);
@@ -65,7 +64,6 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 		dest->end_extension_list = last_gfi->extension_list;
 		dest->has_local_colors   = src->has_local_colors;
 		dest->nimages            = src->nimages;
-		dest->imagescap          = src->imagescap;
 	}
 	return true;
 }
@@ -87,7 +85,6 @@ bool Gif_InitImage(Gif_Image *gfi)
 	gfi->interlace = 0;
 	gfi->local = NULL;
 	gfi->transparent = -1;
-	gfi->user_flags = 0;
 	gfi->identifier = NULL;
 	gfi->comment = NULL;
 	gfi->extension_list = NULL;
@@ -95,7 +92,7 @@ bool Gif_InitImage(Gif_Image *gfi)
 	gfi->compressed_errors = 0;
 	gfi->compressed = NULL;
 	gfi->free_compressed = NULL;
-	gfi->refcount = 0;
+	gfi->user_flags = gfi->refcount = 0;
 	return true;
 }
 
@@ -395,9 +392,9 @@ void Gif_AddExtension(Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex)
 int Gif_PutImage(Gif_Stream *gfs, Gif_Image *gfi)
 {
 	const int max_idx = gfs->nimages;
-	if (gfs->imagescap <= max_idx) {
-		gfs->imagescap = gfs->imagescap ? gfs->imagescap * 2 : 2;
-		if (!Gif_ReArray(gfs->images, Gif_Image *, gfs->imagescap))
+	if (gfs->imgscap <= max_idx) {
+		gfs->imgscap += 10;
+		if (!Gif_ReArray(gfs->images, Gif_Image *, gfs->imgscap))
 			return -1;
 	}
 	gfs->images[max_idx] = gfi;
@@ -420,7 +417,7 @@ void Gif_CalcScreenSize(Gif_Stream *gfs, bool force)
 {
 	unsigned short screen_width = 0, screen_height = 0;
 
-	for (unsigned i = 0; i < gfs->nimages; i++) {
+	for (int i = 0; i < gfs->nimages; i++) {
 		unsigned width = gfs->images[i]->left + gfs->images[i]->width,
 		        height = gfs->images[i]->top  + gfs->images[i]->height;
 
@@ -596,7 +593,7 @@ void Gif_FreeStream(Gif_Stream *gfs)
 {
 	DELETE_HOOK(gfs, GIF_T_STREAM);
 
-	for (unsigned i = 0; i < gfs->nimages; i++)
+	for (int i = 0; i < gfs->nimages; i++)
 		Gif_DeleteImage(gfs->images[i]);
 
 	Gif_DeleteArray   (gfs->images);

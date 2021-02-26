@@ -523,7 +523,7 @@ show_frame(int imagenumber, int usename)
  **/
 
 static void
-gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
+gifread_error(Gif_Stream* gfs, int which_image,
               int is_error, const char* message)
 {
   static int last_is_error = 0;
@@ -532,7 +532,7 @@ gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
   static int different_error_count = 0;
   static int same_error_count = 0;
   char landmark[256];
-  int which_image = Gif_ImageNumber(gfs, gfi);
+  Gif_Image* gfi = Gif_GetImageAtIndex(gfs, which_image);
   if (gfs && which_image < 0)
     which_image = gfs->nimages;
 
@@ -541,7 +541,7 @@ gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
     return;
 
   if (message) {
-    const char *filename = gfs && gfs->landmark ? gfs->landmark : "<unknown>";
+    const char *filename = gfs && Gif_GetLandmarker(gfs) ? Gif_GetLandmarker(gfs) : "<unknown>";
     if (gfi && (which_image != 0 || gfs->nimages != 1))
       snprintf(landmark, sizeof(landmark), "%s:#%d",
                filename, which_image < 0 ? gfs->nimages : which_image);
@@ -587,7 +587,7 @@ gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
     unsigned long missing;
     if (message && sscanf(message, "missing %lu pixel", &missing) == 1
         && missing > 10000 && no_ignore_errors) {
-      gifread_error(gfs, 0, -1, 0);
+      gifread_error(gfs, -1, GE_Log, NULL);
       lerror(landmark, "fatal error: too many missing pixels, giving up");
       exit(1);
     }
@@ -595,6 +595,13 @@ gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
 
   if (gfi && is_error < 0)
     gfi->user_flags |= 1;
+}
+
+static void
+gif_error_handler(Gif_Stream* gfs, Gif_eModule emd, Gif_Error err) {
+  if (emd == GmE_Read) {
+    gifread_error(gfs, err.num, err.lvl, (err.lvl == GE_Log ? NULL : err.msg));
+  }
 }
 
 struct StoredFile {
@@ -731,18 +738,21 @@ input_stream(const char *name)
     verbose_open('<', name);
 
   /* read file */
+  int stream_ok = 0;
   {
     int old_error_count = error_count;
-    gfs = Gif_FullReadFile(f, gif_read_flags | GIF_READ_COMPRESSED,
-                           name, gifread_error);
-    if ((!gfs || (Gif_ImageCount(gfs) == 0 && gfs->errors > 0))
-        && componentno != 1)
+    if (Gif_NewStream(gfs, name)) {
+      Gif_SetErrorHandler(gfs, GE_Log, gif_error_handler);
+      if (Gif_FullReadFile(gfs, gif_read_flags | GIF_READ_COMPRESSED, f))
+        stream_ok = Gif_GetImagesCount(gfs) && gfs->errors.num == 0;
+    }
+    if (!stream_ok && componentno != 1)
       lerror(name, "trailing garbage ignored");
     if (!no_ignore_errors)
       error_count = old_error_count;
   }
 
-  if (!gfs || (Gif_ImageCount(gfs) == 0 && gfs->errors > 0)) {
+  if (!stream_ok) {
     if (componentno == 1)
       lerror(name, "file not in GIF format");
     Gif_DeleteStream(gfs);
@@ -1553,7 +1563,6 @@ main(int argc, char *argv[])
   frames = new_frameset(16);
   initialize_def_frame();
   Gif_InitCompressInfo(&gif_write_info);
-  Gif_SetErrorHandler(gifread_error);
 
   /* Yep, I'm an idiot.
      GIF dimensions are unsigned 16-bit integers. I assume that these

@@ -46,13 +46,48 @@ typedef struct Gif_Image      Gif_Image;
 typedef struct Gif_Colormap   Gif_Colormap;
 typedef struct Gif_Comment    Gif_Comment;
 typedef struct Gif_Extension  Gif_Extension;
+typedef struct Gif_Error      Gif_Error;
+
+typedef enum   Gif_eModule    Gif_eModule;
+typedef enum   Gif_eLevel     Gif_eLevel;
+typedef enum   Gif_Disposal   Gif_Disposal;
+
+typedef void (*Gif_eHandler) (Gif_Stream *, Gif_eModule, Gif_Error);
 
 
-//  Stream class
+/* - - - - - - - *
+   Error object
+ * - - - - - - - */
+enum Gif_eLevel {
+	GE_Log = -1,
+	GE_Warning,
+	GE_Error,
+	GE_Fatal
+};
+
+enum Gif_eModule {
+	GmE_Read       = 0xA,
+	GmE_Optimize, // 0xB
+	GmE_Quantize, // 0xC
+	GmE_Write     // 0xD
+};
+
+struct Gif_Error {
+	Gif_eLevel  lvl;
+	signed int  num;
+	const char *msg;
+};
+
+
+/* - - - - - - - *
+   Stream object
+ * - - - - - - - */
 struct Gif_Stream {
 	Gif_Image **images;
 	unsigned int imgscap;
 
+	Gif_Error      errors;
+	Gif_eHandler   handler;
 	Gif_Colormap  *global;
 	Gif_Comment   *end_comment;
 	Gif_Extension *end_extension_list;
@@ -64,10 +99,7 @@ struct Gif_Stream {
 
 	int loopcount, nimages; /* -1 means no loop count */
 
-	unsigned int errors;
 	int user_flags, refcount;
-
-	const char* landmark;
 
 #ifdef GIFSI_COMPILE_CPP
 	~Gif_Stream();
@@ -75,15 +107,22 @@ struct Gif_Stream {
 };
 
 //  Stream init/copy/destroy
-bool Gif_InitStream(Gif_Stream *);
+bool Gif_InitStream(Gif_Stream * gst, const char *lmark);
 bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags);
 void Gif_FreeStream(Gif_Stream *);
 
 //  Stream getters
+#define Gif_GetLandmarker(gfs)     (gfs->errors.msg)
 #define Gif_GetImagesCount(gfs)    (gfs->nimages)
-#define Gif_GetImageByIndex(gfs,i) (gfs->nimages <= i || i < 0 ? NULL :      gfs->images[i])
+#define Gif_GetImageAtRange(gfs,r) (gfs->nimages <= r          ? NULL :      gfs->images[r < 0 ? gfs->nimages + r : r])
+#define Gif_GetImageAtIndex(gfs,i) (gfs->nimages <= i || i < 0 ? NULL :      gfs->images[i])
 #define Gif_GetImageByName(gfs,n)  (gfs->nimages <= 0          ? NULL : !n ? gfs->images[0] : Gif_ImageByName( gfs->images, gfs->nimages, n))
 #define Gif_GetIndexOfImage(gfs,m) (gfs->nimages <= 0 || !m    ?   -1                       : Gif_IndexOfImage(gfs->images, gfs->nimages, m))
+
+//  Stream setters
+#define Gif_SetErrorHandler(gst,log,h)\
+	gst->errors.lvl = log,\
+	gst->handler    = h
 
 //  Stream other methods
 void Gif_AddExtension  (Gif_Stream *, Gif_Image *, Gif_Extension *);
@@ -98,8 +137,6 @@ bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
 
 
 //  Image class
-typedef enum Gif_Disposal Gif_Disposal;
-
 enum Gif_Disposal {
 	GD_None = 0,
 	GD_Asis,
@@ -149,13 +186,6 @@ void     Gif_ReleaseCompressedImage   (Gif_Image *);
 void     Gif_MakeImageEmpty           (Gif_Image *);
 
 
-typedef void (*Gif_ReadErrorHandler)(
-	Gif_Stream* gfs,
-	Gif_Image*  gfi,
-	int is_error,
-	const char* error_text
-);
-
 typedef struct {
 	int flags, lossy;
 } Gif_CompressInfo;
@@ -164,7 +194,7 @@ Gif_CompressInfo * Gif_NewCompressInfo(void);
 
 #define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,NULL)
 
-int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, Gif_ReadErrorHandler);
+int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, void *);
 int  Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
 void Gif_InitCompressInfo                                     (Gif_CompressInfo *);
 
@@ -296,16 +326,14 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap, Gif
 #define GIF_WRITE_OPTIMIZE              4
 #define GIF_WRITE_SHRINK                8
 
-void        Gif_SetErrorHandler (Gif_ReadErrorHandler);
-Gif_Stream* Gif_FullReadData    (const unsigned char *, unsigned, int, const char *, Gif_ReadErrorHandler);
-
-Gif_Stream* Gif_FullReadFile    (FILE *, int, const char *, Gif_ReadErrorHandler);
+bool Gif_FullReadData(Gif_Stream *, char read_flags, const unsigned char *, unsigned);
+bool Gif_FullReadFile(Gif_Stream *, char read_flags, FILE *);
 
 unsigned int Gif_FullWriteFile  (Gif_Stream *, FILE *         , Gif_CompressInfo *);
 unsigned int Gif_FullWriteData  (Gif_Stream *, unsigned char *, Gif_CompressInfo *);
 
-#define Gif_ReadData(d,l) Gif_FullReadData (d,l, GIF_READ_UNCOMPRESSED, NULL, NULL)
-#define Gif_ReadFile(f)   Gif_FullReadFile (f,   GIF_READ_UNCOMPRESSED, NULL, NULL)
+#define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_UNCOMPRESSED,d,l)
+#define Gif_ReadFile(gst,f)   Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
 
 #define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
 #define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,f,NULL)
@@ -332,7 +360,7 @@ void     Gif_Debug(char *x, ...);
 /* Legacy */
 #define Gif_CalculateScreenSize Gif_CalcScreenSize
 #define Gif_ImageCount         Gif_GetImagesCount
-#define Gif_GetImage           Gif_GetImageByIndex
+#define Gif_GetImage           Gif_GetImageAtIndex
 #define Gif_GetNamedImage      Gif_GetImageByName
 #define Gif_ImageNumber        Gif_GetIndexOfImage
 
@@ -344,7 +372,7 @@ void     Gif_Debug(char *x, ...);
 
 #define Gif_NewExtension(ex,k) Gif_InitExtension(ex = Gif_New(Gif_Extension),k,NULL,0)
 #define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
-#define Gif_NewStream(gst)     Gif_InitStream(  gst = Gif_New(Gif_Stream))
+#define Gif_NewStream(gst,m)   Gif_InitStream(  gst = Gif_New(Gif_Stream),m)
 #define Gif_NewImage(gim)      Gif_InitImage(   gim = Gif_New(Gif_Image))
 
 #define Gif_DeleteExtension    Gif_FreeExtension

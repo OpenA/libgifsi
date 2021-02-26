@@ -456,7 +456,7 @@ gifread_error(Gif_Stream* gfs, Gif_Image* gfi,
   static int different_error_count = 0;
   static int same_error_count = 0;
   int which_image = Gif_ImageNumber(gfs, gfi);
-  const char *filename = gfs->landmark;
+  const char *filename = Gif_GetLandmarker(gfs);
   if (which_image < 0)
     which_image = gfs->nimages;
 
@@ -527,8 +527,8 @@ read_stream(const char **filename)
             fatal_error("%s: %s\n", *filename, strerror(errno));
     }
     gifread_error_count = 0;
-    gfs = Gif_FullReadFile(f, GIF_READ_COMPRESSED, *filename, gifread_error);
-    if (!gfs)
+    if (!(Gif_NewStream(gfs, *filename) &&
+          Gif_FullReadFile(gfs, GIF_READ_COMPRESSED, f)))
         fatal_error("%s: file not in GIF format\n", *filename);
     return gfs;
 }

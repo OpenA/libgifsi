@@ -962,14 +962,15 @@ read_colormap_file(const char *name, FILE *f)
   c = getc(f);
   ungetc(c, f);
   if (c == 'G') {
-    Gif_Stream *gfs = Gif_FullReadFile(f, GIF_READ_COMPRESSED, 0, no_gifread_error);
-    if (!gfs)
+    Gif_Stream *gfs;
+    if (!(Gif_NewStream(gfs, NULL) &&
+        Gif_FullReadFile(gfs, GIF_READ_COMPRESSED, f)))
       lerror(name, "file not in GIF format");
     else if (!gfs->global
              && (gfs->nimages == 0 || !gfs->images[0]->local))
       lerror(name, "can%,t use as palette (no global color table)");
     else {
-      if (gfs->errors)
+      if (gfs->errors.num)
         lwarning(name, "there were errors reading this GIF");
       cm = Gif_New(Gif_Colormap);
       Gif_CopyColormap(cm, (gfs->global ?: gfs->images[0]->local));
@@ -1109,14 +1110,14 @@ find_color_or_error(Gif_Color color, Gif_Stream *gfs, Gif_Image *gfi,
       return color.pixel;
     else {
       if (color_context)
-          lwarning(gfs->landmark, "%s color out of range", color_context);
+          lwarning(Gif_GetLandmarker(gfs), "%s color out of range", color_context);
       return -1;
     }
   }
 
   index = gfcm ? Gif_FindColor(gfcm, color) : -1;
   if (index < 0 && color_context)
-    lwarning(gfs->landmark, "%s color not in colormap", color_context);
+    lwarning(Gif_GetLandmarker(gfs), "%s color not in colormap", color_context);
   return index;
 }
 
@@ -1336,7 +1337,7 @@ analyze_crop(int nmerger, Gt_Crop* crop, int compress_immediately)
   crop->top_offset = crop->y;
   if (crop->x < 0 || crop->y < 0 || crop->w <= 0 || crop->h <= 0
       || crop->x + crop->w > r || crop->y + crop->h > b) {
-      lerror(cropped_gfs ? cropped_gfs->landmark : (const char*) 0,
+      lerror(cropped_gfs ? Gif_GetLandmarker(cropped_gfs) : (const char*) 0,
              "cropping dimensions don%,t fit image");
       crop->ready = 2;
   } else
@@ -1475,9 +1476,8 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
   Gif_Stream *dest;
   int i, same_compressed_ok, all_same_compressed_ok;
 
-  if (Gif_NewStream(dest)) {
+  if (Gif_NewStream(dest, output_data->active_output_name ?: NULL)) {
     Gif_NewColormap(dest->global, 0);
-    dest->landmark = output_data->active_output_name ?: NULL;
   }
   /* 11/23/98 A new stream's screen size is 0x0; we'll use the max of the
      merged-together streams' screen sizes by default (in merge_stream()) */

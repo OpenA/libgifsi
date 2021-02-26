@@ -12,7 +12,7 @@
 /*
   Stream constructor functions
 */
-bool Gif_InitStream(Gif_Stream *gfs)
+bool Gif_InitStream(Gif_Stream *gfs, const char *lmark)
 {
 	if (!gfs)
 		return false;
@@ -25,25 +25,27 @@ bool Gif_InitStream(Gif_Stream *gfs)
 	gfs->end_comment = NULL;
 	gfs->end_extension_list = NULL;
 	gfs->has_local_colors = false;
-	gfs->errors = 0;
+	gfs->errors.lvl = GE_Warning;
+	gfs->errors.num = 0;
+	gfs->errors.msg = lmark;
 	gfs->user_flags = gfs->refcount = 0;
-	gfs->landmark = NULL;
+	gfs->handler = NULL;
 	return true;
 }
 
 bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 {
-	if (!src || !Gif_InitStream(dest))
+	if (!src || !Gif_InitStream(dest, NULL))
 		return false;
 
 	dest->background    = src->background;
 	dest->screen_width  = src->screen_width;
 	dest->screen_height = src->screen_height;
 	dest->loopcount     = src->loopcount;
-	dest->errors        = src->errors;
+	dest->errors.num    = src->errors.num;
 	dest->user_flags    = src->user_flags;
 	dest->refcount      = src->refcount;
-	dest->landmark      = Gif_CopyString(src->landmark);
+	dest->errors.msg    = Gif_CopyString(src->errors.msg);
 
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->global) {
 		dest->global = Gif_New(Gif_Colormap);

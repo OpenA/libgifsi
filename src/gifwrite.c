@@ -644,12 +644,11 @@ save_compression_result(Gif_Image *gfi, Gif_Writer *grr, int ok)
 	if (!(grr->gcinfo.flags & GIF_WRITE_SHRINK)
 		|| (ok && (!gfi->compressed || gfi->compressed_len > grr->pos))) {
 		if (gfi->compressed)
-			(*gfi->free_compressed)((void *) gfi->compressed);
+			Gif_Delete(gfi->compressed);
 		if (ok) {
 			gfi->compressed_len = grr->pos;
 			gfi->compressed_errors = 0;
 			gfi->compressed = grr->data;
-			gfi->free_compressed = Gif_Free;
 			grr->data = NULL;
 			grr->cap = 0;
 		} else

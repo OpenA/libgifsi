@@ -164,7 +164,6 @@ struct Gif_Image {
 	unsigned int   compressed_len;
 	unsigned int   compressed_errors;
 	unsigned char* compressed;
-	void (*free_compressed)(void *);
 
 	int user_flags, refcount;
 };
@@ -178,12 +177,12 @@ void Gif_FreeImage(Gif_Image *);
 #define Gif_GetImageColorBound(gfi) (gfi->compressed && gfi->compressed[0] > 0 && gfi->compressed[0] < 8 ? 1 << gfi->compressed[0] : 256)
 
 //  Image others methods declare
-void     Gif_ClipImage                (Gif_Image *, int, int, int, int);
-bool     Gif_SetUncompressedImage     (Gif_Image *, unsigned char *, void (*free_data)(void *), bool);
-bool     Gif_CreateUncompressedImage  (Gif_Image *, bool);
-void     Gif_ReleaseUncompressedImage (Gif_Image *);
-void     Gif_ReleaseCompressedImage   (Gif_Image *);
-void     Gif_MakeImageEmpty           (Gif_Image *);
+void Gif_ClipImage               (Gif_Image *, int, int, int, int);
+void Gif_SetUncompressedImage    (Gif_Image *, bool is_interlaced, unsigned char *data);
+bool Gif_CreateUncompressedImage (Gif_Image *, bool is_interlaced);
+void Gif_ReleaseUncompressedImage(Gif_Image *);
+void Gif_ReleaseCompressedImage  (Gif_Image *);
+void Gif_MakeImageEmpty          (Gif_Image *);
 
 
 typedef struct {

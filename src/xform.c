@@ -356,11 +356,9 @@ rotate_image(Gif_Image* gfi, Gt_Frame* fr, int rotation)
         fr->left_offset = y;
     }
   }
-
-  Gif_ReleaseUncompressedImage(gfi);
   gfi->width = height;
   gfi->height = width;
-  Gif_SetUncompressedImage(gfi, new_data, Gif_Free, 0);
+  Gif_SetUncompressedImage(gfi, 0, new_data);
 }
 
 

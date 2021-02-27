@@ -414,10 +414,8 @@ read_compressed_image_data(Gif_Reader *grr, Gif_Image *gfi, int flags)
 	gfi->compressed_errors = 0;
 	if (flags & GIF_READ_CONST_RECORD) {
 		gfi->compressed = (unsigned char *) &grr->data[image_pos];
-		gfi->free_compressed = 0;
 	} else {
 		gfi->compressed = Gif_NewArray(unsigned char, gfi->compressed_len);
-		gfi->free_compressed = Gif_Free;
 		if (!gfi->compressed)
 			return false;
 		memcpy(gfi->compressed, &grr->data[image_pos], gfi->compressed_len);
@@ -455,7 +453,6 @@ read_compressed_image_file(Gif_Reader *grr, Gif_Image *gfi, int flags)
 	gfi->compressed_len    = comp_len + 1;
 	gfi->compressed_errors = 0;
 	gfi->compressed        = comp;
-	gfi->free_compressed   = Gif_Free;
 	return true;
 }
 

@@ -93,7 +93,6 @@ bool Gif_InitImage(Gif_Image *gfi)
 	gfi->compressed_len = 0;
 	gfi->compressed_errors = 0;
 	gfi->compressed = NULL;
-	gfi->free_compressed = NULL;
 	gfi->user_flags = gfi->refcount = 0;
 	return true;
 }
@@ -153,7 +152,6 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 		dest->compressed = Gif_NewArray(unsigned char, src->compressed_len);
 		if (!dest->compressed)
 			return false;
-		dest->free_compressed = Gif_Free;
 		memcpy(dest->compressed, src->compressed, src->compressed_len);
 		dest->compressed_len = src->compressed_len;
 		dest->compressed_errors = src->compressed_errors;
@@ -473,38 +471,36 @@ void Gif_ClipImage(Gif_Image *gfi, int left, int top, int width, int height)
 	gfi->height = new_height < 0 ? 0 : new_height;
 }
 
-bool Gif_SetUncompressedImage(Gif_Image *gfi, unsigned char *image_data,
-                         void (*free_data)(void *), bool data_interlaced) {
+void Gif_SetUncompressedImage(Gif_Image *gfi, bool is_interlaced, unsigned char *data)
+{
 	/* NB does not affect compressed image (and must not) */
-	unsigned i;
-	unsigned width  = gfi->width;
-	unsigned height = gfi->height;
-	unsigned char **img;
+	unsigned int   k;
+	unsigned short y, iH = gfi->height,
+	                  iW = gfi->width;
+	unsigned char  **img = Gif_NewArray(unsigned char *, iH + 1);
 
 	Gif_ReleaseUncompressedImage(gfi);
 
-	if (!image_data)
-		return false;
-	if (!(img = Gif_NewArray(unsigned char *, height + 1)))
-		return false;
-
-	if (data_interlaced){
-		for (i = 0; i < height; i++)
-			img[ Gif_InterlaceLine(i, height) ] = image_data + width * i;
-	} else {
-		for (i = 0; i < height; i++)
-			img[i] = image_data + width * i;
+	if (img) {
+		for (y = k = 0; y < iH; k += iW, y++)
+			img[(is_interlaced ? Gif_InterlaceLine(y, iH) : y)] = &data[k];
+		img[iH]  = 0;
+		gfi->img = img;
 	}
-	img[height] = 0;
-	gfi->img = img;
-	gfi->image_data = image_data;
-	return true;
+	gfi->image_data = data;
 }
 
-bool Gif_CreateUncompressedImage(Gif_Image *gfi, bool data_interlaced) {
-	size_t size = gfi->width && gfi->height ? (size_t)gfi->width * (size_t)gfi->height : 1;
-	unsigned char *data = Gif_NewArray(unsigned char, size);
-	return Gif_SetUncompressedImage(gfi, data, Gif_Free, data_interlaced);
+bool Gif_CreateUncompressedImage(Gif_Image *gfi, bool is_interlaced)
+{
+	unsigned len = 1;
+	unsigned char *new_data;
+
+	if (gfi->width && gfi->height)
+		len = (unsigned)gfi->width * (unsigned)gfi->height;
+	if (!(new_data = Gif_NewArray(unsigned char, len)))
+		return false;
+	Gif_SetUncompressedImage(gfi, is_interlaced, new_data);
+	return true;
 }
 
 void Gif_ReleaseUncompressedImage(Gif_Image *gfi) {
@@ -516,12 +512,11 @@ void Gif_ReleaseUncompressedImage(Gif_Image *gfi) {
 }
 
 void Gif_ReleaseCompressedImage(Gif_Image *gfi) {
-	if (gfi->compressed && gfi->free_compressed)
-		(*gfi->free_compressed)(gfi->compressed);
+	if (gfi->compressed)
+		Gif_Delete(gfi->compressed);
 	gfi->compressed        = NULL;
 	gfi->compressed_len    = 0;
 	gfi->compressed_errors = 0;
-	gfi->free_compressed   = NULL;
 }
 
 void Gif_MakeImageEmpty(Gif_Image* gfi) {
@@ -574,8 +569,8 @@ void Gif_FreeImage(Gif_Image *gfi)
 
 	Gif_DeleteArray(gfi->img);
 
-	if (gfi->compressed && gfi->free_compressed)
-		(*gfi->free_compressed)((void *)gfi->compressed);
+	if (gfi->compressed)
+		Gif_Delete(gfi->compressed);
 
 	Gif_Delete(gfi);
 }

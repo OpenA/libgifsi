@@ -739,7 +739,7 @@ static void _Ex_(transp_frame_data)(
 	   two (or three). */
 	Gif_FullCompressImage(gfs, gfi, gcinfo);
 	if (t2_data) {
-		Gif_SetUncompressedImage(gfi, t2_data, Gif_Free, false);
+		Gif_SetUncompressedImage(gfi, false, t2_data);
 		Gif_FullCompressImage(gfs, gfi, gcinfo);
 	}
 	Gif_ReleaseUncompressedImage(gfi);
@@ -795,7 +795,7 @@ static void _Ex_(make_out_frames)(
 		for (x = 0; x < ob.width; x++)
 			*into++ = map[*from++];
 	}
-	Gif_SetUncompressedImage(gfi, data, Gif_Free, false);
+	Gif_SetUncompressedImage(gfi, false, data);
 
 	/* don't use transparency on first frame */
 	if (opt_lvl > 1 && not_first && gfi->transparent >= 0) {

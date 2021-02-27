@@ -1557,10 +1557,9 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Dithe
 			} while (try_assign_transparency(gfi, gfcm, new_data, new_colmap, &new_ncol,
 											 &kd3, histogram));
 
-			Gif_ReleaseUncompressedImage(gfi);
 			/* version 1.28 bug fix: release any compressed version or it'll cause bad images */
 			Gif_ReleaseCompressedImage(gfi);
-			Gif_SetUncompressedImage(gfi, new_data, Gif_Free, false);
+			Gif_SetUncompressedImage(gfi, false, new_data);
 
 			/* update count of used colors */
 			for (j = 0; j < 256; j++)

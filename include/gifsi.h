@@ -342,7 +342,6 @@ unsigned int Gif_FullWriteData  (Gif_Stream *, unsigned char *, Gif_CompressInfo
 /** HOOKS AND MISCELLANEOUS **/
 unsigned Gif_InterlaceLine (unsigned, unsigned);
 char   * Gif_CopyString    (const char *);
-void     Gif_Free          (void *);
 
 Gif_Image *Gif_ImageByName (Gif_Image **arr, const int len, const char *name);
 int        Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img);
@@ -366,13 +365,17 @@ void     Gif_Debug(char *x, ...);
 #define Gif_New(t)         (    (t*) malloc(            sizeof(t)      ))
 #define Gif_NewArray(t,n)  (    (t*) malloc(            sizeof(t) * (n)))
 #define Gif_ReArray(p,t,n) (p = (t*)realloc((void*)(p), sizeof(t) * (n)))
-#define Gif_Delete(p)                  free((void*)(p))
-#define Gif_DeleteArray(p)             free((void*)(p))
+#define Gif_Free(p)                    free((void*)(p))
+#define Gif_FreeArray(p)               free((void*)(p))
 
 #define Gif_NewExtension(ex,k) Gif_InitExtension(ex = Gif_New(Gif_Extension),k,NULL,0)
 #define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
 #define Gif_NewStream(gst,m)   Gif_InitStream(  gst = Gif_New(Gif_Stream),m)
 #define Gif_NewImage(gim)      Gif_InitImage(   gim = Gif_New(Gif_Image))
+
+// Delete ~ free pointer and set it to the NULL
+#define Gif_DeleteArray(p)     Gif_FreeArray(p) , p = NULL
+#define Gif_Delete(p)          Gif_Free(p)      , p = NULL
 
 #define Gif_DeleteExtension    Gif_FreeExtension
 #define Gif_DeleteColormap     Gif_FreeColormap

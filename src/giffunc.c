@@ -346,10 +346,6 @@ unsigned Gif_InterlaceLine(unsigned line, unsigned height)
 	line * 8);
 }
 
-void Gif_Free(void* ptr) {
-	free(ptr);
-}
-
 
 /*
   Stream methods & working functions
@@ -507,14 +503,11 @@ void Gif_ReleaseUncompressedImage(Gif_Image *gfi) {
 	Gif_DeleteArray(gfi->img);
 	if (gfi->image_data)
 		Gif_Delete(gfi->image_data);
-	gfi->img = NULL;
-	gfi->image_data = NULL;
 }
 
 void Gif_ReleaseCompressedImage(Gif_Image *gfi) {
 	if (gfi->compressed)
 		Gif_Delete(gfi->compressed);
-	gfi->compressed        = NULL;
 	gfi->compressed_len    = 0;
 	gfi->compressed_errors = 0;
 }

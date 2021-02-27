@@ -651,8 +651,7 @@ save_compression_result(Gif_Image *gfi, Gif_Writer *grr, int ok)
 			gfi->compressed = grr->data;
 			grr->data = NULL;
 			grr->cap = 0;
-		} else
-			gfi->compressed = NULL;
+		}
 	}
 	grr->pos = 0;
 }

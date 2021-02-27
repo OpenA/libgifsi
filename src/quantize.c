@@ -166,7 +166,6 @@ void kchist_init(kchist *kch)
 void kchist_cleanup(kchist *kch)
 {
 	Gif_DeleteArray(kch->h);
-	kch->h = NULL;
 }
 
 kchistitem *kchist_add(kchist *kch, kcolor k, unsigned count)
@@ -691,8 +690,6 @@ void kd3_add_transformed(kd3_tree *kd3, const kcolor *k)
 	if (kd3->tree) {
 		Gif_DeleteArray(kd3->tree);
 		Gif_DeleteArray(kd3->xradius);
-		kd3->tree = NULL;
-		kd3->xradius = NULL;
 	}
 }
 

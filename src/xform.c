@@ -266,7 +266,6 @@ crop_image(Gif_Image* gfi, Gt_Frame* fr, int preserve_total_crop)
         Gif_MakeImageEmpty(gfi);
     else {
         Gif_DeleteArray(gfi->img);
-        gfi->img = 0;
         gfi->width = gfi->height = 0;
     }
 

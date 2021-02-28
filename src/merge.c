@@ -201,18 +201,9 @@ merge_stream(Gif_Stream *dest, Gif_Stream *src, int no_comments)
 
   if (src->end_comment && !no_comments) {
     if (!dest->end_comment)
-      dest->end_comment = Gif_NewComment();
-    merge_comments(dest->end_comment, src->end_comment);
+      dest->end_comment = Gif_New(Gif_Comment);
+    Gif_CopyComment(dest->end_comment, src->end_comment);
   }
-}
-
-
-void
-merge_comments(Gif_Comment *destc, Gif_Comment *srcc)
-{
-  int i;
-  for (i = 0; i < srcc->count; i++)
-    Gif_AddComment(destc, srcc->str[i], srcc->len[i]);
 }
 
 
@@ -362,8 +353,8 @@ merge_image(Gif_Stream *dest, Gif_Stream *src, Gif_Image *srci,
 
   /* comments and extensions */
   if (srci->comment) {
-    desti->comment = Gif_NewComment();
-    merge_comments(desti->comment, srci->comment);
+    desti->comment = Gif_New(Gif_Comment);
+    Gif_CopyComment(desti->comment, srci->comment);
   }
   if (srci->extension_list && !srcfr->no_extensions) {
       Gif_Extension *dst_ex, *src_ex = srci->extension_list;

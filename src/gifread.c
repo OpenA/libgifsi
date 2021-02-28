@@ -671,9 +671,9 @@ read_comment_extension(Gif_Reader *grr, Gif_Image *gfi)
 	char *ext = suck_data(grr, NULL, &len);
 	bool ok = true;
 	if ( ext ) {
-		 ok = Gif_AddCommentTake((
-			 gfi->comment ?: (gfi->comment = Gif_NewComment())
-		 ), ext, len);
+		if (!gfi->comment)
+			Gif_NewComment(gfi->comment);
+		 ok = Gif_CatIndent(gfi->comment, ext, len) != -1;
 	}
 	return ok;
 }

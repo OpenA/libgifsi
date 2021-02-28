@@ -1681,7 +1681,8 @@ main(int argc, char *argv[])
      case COMMENT_OPT:
       if (clp->negated) goto no_comments;
       MARK_CH(frame, CH_COMMENT);
-      if (!def_frame.comment) def_frame.comment = Gif_NewComment();
+      if (!def_frame.comment)
+          Gif_NewComment(def_frame.comment);
       Gif_AddComment(def_frame.comment, clp->vstr, -1);
       break;
 

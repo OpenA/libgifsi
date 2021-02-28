@@ -875,7 +875,7 @@ write_name_extension(char *id, Gif_Writer *grr)
 static void
 write_comment_extensions(Gif_Comment *gfcom, Gif_Writer *grr)
 {
-	for (int i = 0; i < gfcom->count; i++) {
+	for (int i = 0; i < gfcom->indents; i++) {
 		writeChar('!', grr);
 		writeUint8(0xFE, grr);
 		blast_data((const unsigned char *)gfcom->str[i], gfcom->len[i], grr);

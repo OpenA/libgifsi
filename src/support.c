@@ -329,8 +329,7 @@ safe_puts(const char *s, uint32_t len, FILE *f)
 static void
 comment_info(FILE *where, Gif_Comment *gfcom, const char *prefix)
 {
-  int i;
-  for (i = 0; i < gfcom->count; i++) {
+  for (int i = 0; i < gfcom->indents; i++) {
     fputs(prefix, where);
     safe_puts(gfcom->str[i], gfcom->len[i], where);
     fputc('\n', where);
@@ -1223,13 +1222,13 @@ fix_total_crop(Gif_Stream *dest, Gif_Image *srci, int merger_index)
      gone. Save comments though. */
   if (!fr->no_comments && srci->comment && next_fr) {
     if (!next_fr->comment)
-      next_fr->comment = Gif_NewComment();
-    merge_comments(next_fr->comment, srci->comment);
+         next_fr->comment = Gif_New(Gif_Comment);
+    Gif_CopyComment(next_fr->comment, srci->comment);
   }
   if (fr->comment && next_fr) {
     if (!next_fr->comment)
-      next_fr->comment = Gif_NewComment();
-    merge_comments(next_fr->comment, fr->comment);
+         next_fr->comment = Gif_New(Gif_Comment);
+    Gif_CopyComment(next_fr->comment, fr->comment);
     Gif_DeleteComment(fr->comment);
     fr->comment = 0;
   }
@@ -1617,8 +1616,9 @@ merge_frame_interval(Gt_Frameset *fset, int f1, int f2,
       desti->comment = 0;
     }
     if (fr->comment) {
-      if (!desti->comment) desti->comment = Gif_NewComment();
-      merge_comments(desti->comment, fr->comment);
+      if (!desti->comment)
+           desti->comment = Gif_New(Gif_Comment);
+      Gif_CopyComment(desti->comment, fr->comment);
       /* delete the comment early to help with memory; set field to 0 so we
          don't re-free it later */
       Gif_DeleteComment(fr->comment);

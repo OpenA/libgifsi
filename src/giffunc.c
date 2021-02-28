@@ -115,12 +115,9 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 	dest->identifier  = Gif_CopyString(src->identifier);
 
 	if (!(no_copy_flags & NO_COPY_GIF_COMMENTS) && src->comment) {
-		if (!(dest->comment = Gif_NewComment()))
+		dest->comment = Gif_New(Gif_Comment);
+		if (!Gif_CopyComment(dest->comment, src->comment))
 			return false;
-		for (int i = 0; i < src->comment->count; i++) {
-			if (!Gif_AddComment(dest->comment, src->comment->str[i], src->comment->len[i]))
-				return false;
-		}
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->extension_list) {
 		Gif_Extension *dst_ex, *src_ex = src->extension_list;
@@ -217,54 +214,56 @@ int Gif_PutColor(Gif_Colormap *gfcm, int look_from, Gif_Color c)
 /*
   Comment constructor functions & methods
 */
-Gif_Comment *
-Gif_NewComment(void) {
-	Gif_Comment *gfcom = Gif_New(Gif_Comment);
-	if (gfcom != NULL)
-		Gif_InitComment(gfcom);
-	return gfcom;
-}
-
-void Gif_InitComment(Gif_Comment *gfcom)
+bool Gif_InitComment(Gif_Comment *gcom, const int icount)
 {
-	gfcom->str = NULL;
-	gfcom->len = NULL;
-	gfcom->count = gfcom->cap = 0;
-}
-
-bool Gif_AddCommentTake(Gif_Comment *gfcom, char *str, int len)
-{
-	int count = gfcom->count,
-	      cap = gfcom->cap;
-	if (count >= cap) {
-		gfcom->cap = cap = (cap ? cap * 2 : 2);
-		Gif_ReArray(gfcom->str, char *, cap);
-		Gif_ReArray(gfcom->len, int   , cap);
-		if (!gfcom->str || !gfcom->len)
-			return false;
-	}
-	gfcom->str[ count ] = str;
-	gfcom->len[ count ] = len < 0 ? strlen(str) : len;
-	gfcom->count++;
+	if (!gcom)
+		return false;
+	gcom->str = NULL;
+	gcom->len = NULL;
+	gcom->indents = gcom->cap = 0;
 	return true;
 }
 
-bool Gif_AddComment(Gif_Comment *gfcom, const char *str, int len)
+bool Gif_CopyComment(Gif_Comment *dest, const Gif_Comment *src)
 {
-	if (len < 0)
-		len = strlen(str);
+	if (!src || !Gif_InitComment(dest, src->indents))
+		return false;
+	for (int i = 0; i < src->indents; i++)
+		if (-1 == Gif_CpyIndent(dest, src->str[i], src->len[i]))
+			return false;
+	return true;
+}
 
+int Gif_CatIndent(Gif_Comment *gcom, const char *str, unsigned len)
+{
+	const int last_ind = gcom->indents;
+
+	if (last_ind >= gcom->cap) {
+		gcom->cap = (gcom->cap ?: 1) * 2;
+		Gif_ReArray(gcom->str, const char *, gcom->cap);
+		Gif_ReArray(gcom->len, unsigned int, gcom->cap);
+		if (!gcom->str || !gcom->len)
+			return -1;
+	}
+	gcom->str[ last_ind ] = str;
+	gcom->len[ last_ind ] = len;
+	gcom->indents++;
+	return last_ind;
+}
+
+int Gif_CpyIndent(Gif_Comment *gcom, const char *str, unsigned len)
+{
 	char *comm = Gif_NewArray(char, len);
 	if ( !comm )
-		return false;
+		return -1;
 
 	memcpy(comm, str, len);
 
-	if (!Gif_AddCommentTake(gfcom, comm, len)) {
+	int new_ind = Gif_CatIndent(gcom, comm, len);
+	if (new_ind == -1)
 		Gif_DeleteArray(comm);
-		return false;
-	}
-	return true;
+
+	return new_ind;
 }
 
 
@@ -575,11 +574,11 @@ void Gif_FreeColormap(Gif_Colormap *gfcm)
 	Gif_Delete(gfcm);
 }
 
-void Gif_DeleteComment(Gif_Comment *gfcom)
+void Gif_FreeComment(Gif_Comment *gfcom)
 {
 	if (!gfcom)
 		return;
-	for (int i = 0; i < gfcom->count; i++)
+	for (int i = 0; i < gfcom->indents; i++)
 		Gif_DeleteArray(gfcom->str[i]);
 	Gif_DeleteArray(gfcom->str);
 	Gif_DeleteArray(gfcom->len);

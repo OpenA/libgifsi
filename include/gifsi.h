@@ -235,20 +235,26 @@ void Gif_FreeColormap(Gif_Colormap *);
 int Gif_PutColor(Gif_Colormap *, int look_from, Gif_Color);
 
 
-// Comment class
+
+/* - - - - - - - *
+   Comment object
+ * - - - - - - - */
 struct Gif_Comment {
-	char **str;
-	int   *len;
-	int count, cap;
+	const char  **str;
+	unsigned int *len, cap;
+	  signed int indents;
 };
 
-// Comment class
-Gif_Comment *
-     Gif_NewComment     (void);
-void Gif_InitComment    (Gif_Comment *);
-void Gif_DeleteComment  (Gif_Comment *);
-bool Gif_AddCommentTake (Gif_Comment *, char *, int);
-bool Gif_AddComment     (Gif_Comment *, const char *, int);
+//  Comment init/copy/destroy
+bool Gif_InitComment(Gif_Comment *gcom, const int icount);
+bool Gif_CopyComment(Gif_Comment *dest, const Gif_Comment *src);
+void Gif_FreeComment(Gif_Comment *);
+
+#define Gif_AddComment(com,s,l) (void)Gif_CpyIndent(com, s, (l <= 0 ? strlen(s) : l))
+
+int Gif_CatIndent(Gif_Comment *, const char *str, unsigned len);
+int Gif_CpyIndent(Gif_Comment *, const char *str, unsigned len);
+
 
 
 //  Extension class
@@ -370,6 +376,7 @@ void     Gif_Debug(char *x, ...);
 
 #define Gif_NewExtension(ex,k) Gif_InitExtension(ex = Gif_New(Gif_Extension),k,NULL,0)
 #define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
+#define Gif_NewComment(com)    Gif_InitComment( com = Gif_New(Gif_Comment),1)
 #define Gif_NewStream(gst,m)   Gif_InitStream(  gst = Gif_New(Gif_Stream),m)
 #define Gif_NewImage(gim)      Gif_InitImage(   gim = Gif_New(Gif_Image))
 
@@ -379,6 +386,7 @@ void     Gif_Debug(char *x, ...);
 
 #define Gif_DeleteExtension    Gif_FreeExtension
 #define Gif_DeleteColormap     Gif_FreeColormap
+#define Gif_DeleteComment      Gif_FreeComment
 #define Gif_DeleteStream       Gif_FreeStream
 #define Gif_DeleteImage        Gif_FreeImage
 

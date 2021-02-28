@@ -581,22 +581,20 @@ read_graphic_control_extension(struct GReadContext *gctx, Gif_Image *gfi,
 	}
 }
 
-static char *
-suck_data(Gif_Reader *grr, char *data, unsigned *store_len)
+static void
+read_name_extension(Gif_Reader *grr, Gif_Image *gim)
 {
-	unsigned int size;
-	unsigned int total_len = 0;
+	unsigned char bsize;
+	unsigned int  pos = 0;
 
-	while ((size = readUint8(grr)) > 0) {
-		Gif_ReArray(data, char, total_len + size + 1);
-		if (!data)
-			return NULL;
-		readChunk(grr, (unsigned char *)data + total_len, size);
-		data[(total_len += size)] = 0;
+	while ((bsize = readUint8(grr))) {
+		unsigned len = pos + bsize;
+		if (!Gif_ReArray(gim->identifier, char, len + 1))
+			return;
+		readChunk(grr, &gim->identifier[pos], bsize);
+		gim->identifier[len] = '\0';
+		pos = len;
 	}
-	if ( store_len )
-		*store_len = total_len;
-	return data;
 }
 
 static void
@@ -604,7 +602,7 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
                        int kind, char *appname, int applength)
 {
 	unsigned int    len = 0;
-	unsigned int   size = 0;
+	unsigned char  size = 0;
 	unsigned char *data = NULL;
 	Gif_Extension *gext = NULL;
 
@@ -664,18 +662,20 @@ read_application_extension(struct GReadContext *gctx, Gif_Reader *grr, Gif_Strea
 		read_unknown_extension(grr, gfs, gfi, 0xFF, (char*)buf, len);
 }
 
-static bool
-read_comment_extension(Gif_Reader *grr, Gif_Image *gfi)
+static void
+read_comment_extension(struct GReadContext *gctx, Gif_Reader *grr, Gif_Image *gim)
 {
-	unsigned len;
-	char *ext = suck_data(grr, NULL, &len);
-	bool ok = true;
-	if ( ext ) {
-		if (!gfi->comment)
-			Gif_NewComment(gfi->comment);
-		 ok = Gif_CatIndent(gfi->comment, ext, len) != -1;
+	unsigned char *comm_str, comm_len = readUint8(grr);
+
+	if (comm_len > 0) {
+		if (!gim->comment)
+			Gif_NewComment(gim->comment);
+		do {
+			comm_str = Gif_NewArray(unsigned char, comm_len);
+			readChunk(grr, comm_str, comm_len);
+			(void)Gif_CatIndent(gim->comment, comm_str, comm_len);
+		} while ((comm_len = readUint8(grr)));
 	}
-	return ok;
 }
 
 static bool
@@ -695,7 +695,6 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 	skipBytes(grr, 3);
 
 	Gif_Image *last_gim;
-	     char *last_name;
 
 	if (!Gif_NewImage(last_gim) || !read_logical_screen_descriptor(grr, gst))
 		goto done;
@@ -707,8 +706,6 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 
 		case ',': /* image block */
 			GIF_DEBUG(("imageread %d ", gst->nimages));
-			last_gim->identifier = last_name;
-			last_name = NULL;
 
 			if (Gif_PutImage(gst, last_gim) == -1)
 				goto done;
@@ -733,7 +730,7 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 			switch (byte) {
 
 			case 0xCE:
-				last_name = suck_data(grr, last_name, NULL);
+				read_name_extension(grr, last_gim);
 				break;
 
 			case 0xF9:
@@ -741,8 +738,7 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 				break;
 
 			case 0xFE:
-				if (!read_comment_extension(grr, last_gim))
-					goto done;
+				read_comment_extension(&gctx, grr, last_gim);
 				break;
 
 			case 0xFF:
@@ -779,7 +775,6 @@ done:
 		last_gim->comment        = NULL;
 	}
 	Gif_DeleteImage(last_gim);
-	Gif_DeleteArray(last_name);
 
 	if (!(gst->errors.num = gctx.errors)
 		&& !(flags & GIF_READ_TRAILING_GARBAGE_OK)

@@ -848,37 +848,34 @@ write_graphic_control_extension(Gif_Image *gfi, Gif_Writer *grr)
 	writeChar  ('\0'      , grr);
 }
 
-
-static void
-blast_data(const unsigned char *data, int len, Gif_Writer *grr)
-{
-	while (len > 0) {
-		int s = _MIN(len, 255);
-		writeUint8(s, grr);
-		writeChunk(data, s, grr);
-		data += s;
-		len  -= s;
-	}
-	writeChar('\0', grr);
+#define writeData(_W_,_D_,_N_) {\
+	unsigned pos = 0, len = _N_;\
+\
+	while (len > 0) {\
+		unsigned char b = _MIN(len, WRITE_BUFFER_SIZE);\
+		writeUint8(b, _W_);\
+		writeChunk(&_D_[pos], b, _W_);\
+		pos += b, len -= b;\
+	}\
 }
 
-
 static void
-write_name_extension(char *id, Gif_Writer *grr)
+write_name_extension(Gif_Writer *gwr, const char *name)
 {
-	writeChar('!', grr);
-	writeUint8(0xCE, grr);
-	blast_data((unsigned char *)id, strlen(id), grr);
+	writeChar('!', gwr);
+	writeUint8(0xCE, gwr);
+	writeData(gwr, name, strlen(name));
+	writeChar('\0', gwr);
 }
 
-
 static void
-write_comment_extensions(Gif_Comment *gfcom, Gif_Writer *grr)
+write_comment_extensions(Gif_Writer *gwr, Gif_Comment *gcom)
 {
-	for (int i = 0; i < gfcom->indents; i++) {
-		writeChar('!', grr);
-		writeUint8(0xFE, grr);
-		blast_data((const unsigned char *)gfcom->str[i], gfcom->len[i], grr);
+	for (int i = 0; i < gcom->indents; i++) {
+		writeChar('!', gwr);
+		writeUint8(0xFE, gwr);
+		writeData(gwr, gcom->str[i], gcom->len[i]);
+		writeChar('\0', gwr);
 	}
 }
 
@@ -893,62 +890,52 @@ write_netscape_loop_extension(unsigned short value, Gif_Writer *grr)
 
 
 static void
-write_generic_extension(Gif_Extension *gfex, Gif_Writer *grr)
+write_generic_extension(Gif_Writer *gwr, Gif_Extension *gfex)
 {
-	unsigned pos = 0;
-	if (gfex->kind < 0) return;   /* ignore our private extensions */
+	for (;  gfex; gfex = gfex->next) {
 
-	writeChar('!', grr);
-	writeUint8(gfex->kind, grr);
-	if (gfex->kind == 255) {      /* an application extension */
-		if (gfex->applength) {
-			writeUint8(gfex->applength, grr);
-			writeString(gfex->appname, gfex->applength, grr);
+		if (gfex->kind < 0)
+			continue; /* ignore our private extensions */
+
+		writeChar('!', gwr);
+		writeUint8(gfex->kind, gwr);
+		if (gfex->kind == 255) { /* an application extension */
+			if (gfex->applength) {
+				writeUint8(gfex->applength, gwr);
+				writeString(gfex->appname, gfex->applength, gwr);
+			}
 		}
+		if (gfex->packetized)
+			writeChunk(gfex->data, gfex->length, gwr);
+		else
+			writeData(gwr, gfex->data, gfex->length);
+		writeChar('\0', gwr);
 	}
-	if (gfex->packetized)
-		writeChunk(gfex->data, gfex->length, grr);
-	else {
-		while (pos + 255 < gfex->length) {
-			writeUint8(255, grr);
-			writeChunk(gfex->data + pos, 255, grr);
-			pos += 255;
-		}
-		if (pos < gfex->length) {
-			unsigned len = gfex->length - pos;
-			writeUint8(len, grr);
-			writeChunk(gfex->data + pos, len, grr);
-		}
-	}
-	writeChar('\0', grr);
 }
 
 static bool
-incremental_write_image(Gif_Writer* grr, Gif_Stream* gfs, Gif_Image* gfi)
+incremental_write_image(Gif_Writer* gwr, Gif_Stream* gfs, Gif_Image* gfi)
 {
-	Gif_Extension *gfex;
-	for (gfex = gfi->extension_list; gfex; gfex = gfex->next)
-		write_generic_extension(gfex, grr);
+	if (gfi->extension_list)
+		write_generic_extension(gwr, gfi->extension_list);
 	if (gfi->comment)
-		write_comment_extensions(gfi->comment, grr);
+		write_comment_extensions(gwr, gfi->comment);
 	if (gfi->identifier)
-		write_name_extension(gfi->identifier, grr);
+		write_name_extension(gwr, gfi->identifier);
 	if (gfi->transparent != -1 || gfi->disposal || gfi->delay)
-		write_graphic_control_extension(gfi, grr);
-	return write_image(gfs, gfi, grr);
+		write_graphic_control_extension(gfi, gwr);
+	return write_image(gfs, gfi, gwr);
 }
 
 static bool
 write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 {
-	Gif_Extension* gfex;
-	int i;
 	bool isgif89a = false;
 
 	if (gfs->end_comment || gfs->end_extension_list || gfs->loopcount > -1) {
 		isgif89a = true;
 	} else {
-		for (i = 0; i < gfs->nimages; i++) {
+		for (int i = 0; i < gfs->nimages; i++) {
 			Gif_Image* gfi = gfs->images[i];
 			if (gfi->identifier || gfi->transparent != -1 || gfi->disposal
 				|| gfi->delay || gfi->comment || gfi->extension_list) {
@@ -964,14 +951,14 @@ write_gif(Gif_Stream *gfs, Gif_Writer *grr)
 	if (gfs->loopcount > -1)
 		write_netscape_loop_extension(gfs->loopcount, grr);
 
-	for (i = 0; i < gfs->nimages; i++)
+	for (int i = 0; i < gfs->nimages; i++)
 		if (!incremental_write_image(grr, gfs, gfs->images[i]))
 			return false;
 
-	for (gfex = gfs->end_extension_list; gfex; gfex = gfex->next)
-		write_generic_extension(gfex, grr);
+	if (gfs->end_extension_list)
+		write_generic_extension(grr, gfs->end_extension_list);
 	if (gfs->end_comment)
-		write_comment_extensions(gfs->end_comment, grr);
+		write_comment_extensions(grr, gfs->end_comment);
 
 	writeChar(';', grr);
 	return true;

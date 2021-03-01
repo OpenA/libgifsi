@@ -120,12 +120,7 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->extension_list) {
-		Gif_Extension *dst_ex, *src_ex = src->extension_list;
-		do {
-			dst_ex = Gif_New(Gif_Extension);
-			if (Gif_CopyExtension(dst_ex, src_ex))
-				Gif_AddExtension(NULL, dest, dst_ex);
-		} while ((src_ex = src_ex->next));
+		Gif_CopyExtensionsList(NULL, dest, src->extension_list, -1);
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->local) {
 		dest->local = Gif_New(Gif_Colormap);
@@ -291,16 +286,29 @@ bool Gif_InitExtension(Gif_Extension *gfex, int kind, const char *name, unsigned
 	return true;
 }
 
-bool Gif_CopyExtension(Gif_Extension* dest, const Gif_Extension* src)
+bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src)
 {
 	if (!src || !Gif_InitExtension(dest, src->kind, src->appname, src->applength))
 		return false;
-	if (src->data && (dest->data = Gif_NewArray(unsigned char, src->length))) {
-		memcpy(dest->data, src->data, src->length);
-		dest->length = src->length;
+	if (src->data) {
+		if (!(dest->data = Gif_NewArray(unsigned char, src->length)))
+			return false;
+		memcpy(dest->data, src->data, (dest->length = src->length));
 	}
 	dest->packetized = src->packetized;
 	return true;
+}
+
+void Gif_CopyExtensionsList(Gif_Stream *gst, Gif_Image *gim, Gif_Extension *list, int kind_filter)
+{
+	Gif_Extension *gfex;
+	do {
+		if (list->kind != kind_filter) {
+			gfex = Gif_New(Gif_Extension);
+			if (Gif_CopyExtension(gfex, list))
+				Gif_AddExtension(gst, gim, gfex);
+		}
+	} while ((list = list->next));
 }
 
 
@@ -591,8 +599,8 @@ void Gif_FreeExtension(Gif_Extension *gfex)
 		return;
 	if (gfex->data)
 		Gif_DeleteArray(gfex->data);
-
-	Gif_DeleteArray(gfex->appname);
+	if (gfex->appname)
+		Gif_DeleteArray(gfex->appname);
 
 	if (gfex->stream || gfex->image) {
 		Gif_Extension** pprev = (

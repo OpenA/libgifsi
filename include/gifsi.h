@@ -276,6 +276,7 @@ bool Gif_InitExtension(Gif_Extension *gfex, const int kind, const char *name, un
 bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src);
 void Gif_FreeExtension(Gif_Extension *);
 
+void Gif_CopyExtensionsList(Gif_Stream *, Gif_Image *, Gif_Extension *list, int kind_filter);
 
 /* Optimizer */
 #define GIF_OPT_MASK      0xFFFF

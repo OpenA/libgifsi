@@ -627,7 +627,7 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 		gext->length     = len;
 		gext->packetized = true;
 		gext->data[len]  = 0;
-		Gif_AddExtension(gfs, gfi, gext);
+		Gif_AddImageExtension(gfi, gext);
 	} else
 		Gif_DeleteArray(data);
 }
@@ -764,13 +764,8 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 done:
 	/* Move comments and extensions after last image into stream. */
 	if (last_gim) {
-		Gif_Extension *gext = (
-		gst->end_extension_list = last_gim->extension_list);
-		gst->end_comment        = last_gim->comment;
-		while (gext) {
-			gext->image = NULL;
-			gext = gext->next;
-		}
+		gst->end_extension_list  = last_gim->extension_list;
+		gst->end_comment         = last_gim->comment;
 		last_gim->extension_list = NULL;
 		last_gim->comment        = NULL;
 	}

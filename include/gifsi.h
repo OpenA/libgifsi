@@ -36,10 +36,16 @@
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
 
-#define NO_COPY_GIF_IMAGES     1
-#define NO_COPY_GIF_COLORMAP   2
-#define NO_COPY_GIF_COMMENTS   4
-#define NO_COPY_GIF_EXTENSIONS 8
+#define NO_COPY_GIF_IMAGES     0x01
+#define NO_COPY_GIF_COLORMAP   0x02
+#define NO_COPY_GIF_COMMENTS   0x04
+#define NO_COPY_GIF_EXTENSIONS 0x08
+
+#define NO_COPY_EXTENSION_APP  0x10
+#define NO_COPY_EXTENSION_NEXT 0x20
+
+//#define NO_COPY__RESERVED1__ 0x40
+//#define NO_COPY__RESERVED2__ 0x80
 
 typedef struct Gif_Stream     Gif_Stream;
 typedef struct Gif_Image      Gif_Image;
@@ -124,8 +130,13 @@ void Gif_FreeStream(Gif_Stream *);
 	gst->errors.lvl = log,\
 	gst->handler    = h
 
+#define Gif_AddStreamExtension(gst,ex)\
+	if (gst->end_extension_list)\
+		(void)Gif_PutExtension(gst->end_extension_list, ex);\
+	else\
+		gst->end_extension_list = ex
+
 //  Stream other methods
-void Gif_AddExtension  (Gif_Stream *, Gif_Image *, Gif_Extension *);
 int  Gif_PutImage      (Gif_Stream *, Gif_Image *);
 void Gif_RemoveImage   (Gif_Stream *, int  index);
 void Gif_CalcScreenSize(Gif_Stream *, bool force);
@@ -175,6 +186,12 @@ void Gif_FreeImage(Gif_Image *);
 
 //  Image getters
 #define Gif_GetImageColorBound(gfi) (gfi->compressed && gfi->compressed[0] > 0 && gfi->compressed[0] < 8 ? 1 << gfi->compressed[0] : 256)
+
+#define Gif_AddImageExtension(gim,ex)\
+	if (gim->extension_list)\
+		(void)Gif_PutExtension(gim->extension_list, ex);\
+	else\
+		gim->extension_list = ex
 
 //  Image others methods declare
 void Gif_ClipImage               (Gif_Image *, int, int, int, int);
@@ -257,9 +274,9 @@ int Gif_CpyIndent(Gif_Comment *, const char *str, unsigned len);
 
 
 
-/* - - - - - - - *
+/* - - - - - - - - - - - - *
    Extension (list) object
- * - - - - - - - */
+ * - - - - - - - - - - - - */
 struct Gif_Extension {
 	short kind; // negative kinds are reserved
 	const char *appname;
@@ -267,17 +284,18 @@ struct Gif_Extension {
 	unsigned int length, applength;
 	bool packetized;
 
-	Gif_Stream *stream;
-	Gif_Image *image;
-	Gif_Extension *next;
+	Gif_Extension *prev, *next;
 };
 
 //  Extension init/copy/destroy
 bool Gif_InitExtension(Gif_Extension *gfex, short kind, const char *name, unsigned len);
-bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src);
+bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src, char no_copy_flags);
 void Gif_FreeExtension(Gif_Extension *);
 
-void Gif_CopyExtensionsList(Gif_Stream *, Gif_Image *, Gif_Extension *list, int kind_filter);
+//  Extension other methods
+int  Gif_PutExtension (Gif_Extension *list, Gif_Extension *gfex);
+
+
 
 /* Optimizer */
 #define GIF_OPT_MASK      0xFFFF

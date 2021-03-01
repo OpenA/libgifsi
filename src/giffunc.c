@@ -53,19 +53,27 @@ bool Gif_CopyStream(Gif_Stream *dest, const Gif_Stream *src, char no_copy_flags)
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_IMAGES) && src->nimages > 0) {
-		Gif_Image *last_gfi; /* there is no reason for copy imgscap */
+		/* there is no reason for copy imgscap */
 		if (!(dest->images = Gif_NewArray(Gif_Image *, dest->imgscap = src->nimages)))
 			return false;
 		for (int i = 0; i < src->nimages; i++) {
-			last_gfi = Gif_New(Gif_Image);
-			if (!Gif_CopyImage(last_gfi, src->images[i], no_copy_flags))
+			Gif_Image *gim = Gif_New(Gif_Image);
+			if (!Gif_CopyImage(gim, src->images[i], no_copy_flags))
 				return false;
-			dest->images[i] = last_gfi;
+			dest->images[i] = gim;
 		}
-		dest->end_comment        = last_gfi->comment;
-		dest->end_extension_list = last_gfi->extension_list;
-		dest->has_local_colors   = src->has_local_colors;
-		dest->nimages            = src->nimages;
+		dest->has_local_colors = src->has_local_colors;
+		dest->nimages = src->nimages;
+	}
+	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->end_extension_list) {
+		Gif_Extension *gfex = Gif_New(Gif_Extension);
+		if (Gif_CopyExtension(gfex, src->end_extension_list, no_copy_flags))
+			Gif_AddStreamExtension(dest, gfex);
+	}
+	if (!(no_copy_flags & NO_COPY_GIF_COMMENTS) && src->end_comment) {
+		dest->end_comment = Gif_New(Gif_Comment);
+		if (!Gif_CopyComment(dest->end_comment, src->end_comment))
+			return false;
 	}
 	return true;
 }
@@ -120,7 +128,9 @@ bool Gif_CopyImage(Gif_Image *dest, const Gif_Image *src, char no_copy_flags)
 			return false;
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_EXTENSIONS) && src->extension_list) {
-		Gif_CopyExtensionsList(NULL, dest, src->extension_list, -1);
+		Gif_Extension *gfex = Gif_New(Gif_Extension);
+		if (Gif_CopyExtension(gfex, src->extension_list, no_copy_flags))
+			Gif_AddImageExtension(dest, gfex);
 	}
 	if (!(no_copy_flags & NO_COPY_GIF_COLORMAP) && src->local) {
 		dest->local = Gif_New(Gif_Colormap);
@@ -282,36 +292,47 @@ bool Gif_InitExtension(Gif_Extension *gfex, short kind, const char *name, unsign
 		gfex->appname = appname;
 		gfex->applength = len;
 	}
-	gfex->stream = NULL;
-	gfex->image = NULL;
-	gfex->next = NULL;
+	gfex->prev = gfex->next = NULL;
 	return true;
 }
 
-bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src)
+bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src, char no_copy_flags)
 {
-	if (!src || !Gif_InitExtension(dest, src->kind, src->appname, src->applength))
+	if (!src || !dest)
 		return false;
-	if (src->data) {
-		if (!(dest->data = Gif_NewArray(unsigned char, src->length)))
-			return false;
-		memcpy(dest->data, src->data, (dest->length = src->length));
-	}
-	dest->packetized = src->packetized;
-	return true;
+
+	bool done_ok = true;
+	bool do_copy = !(no_copy_flags & NO_COPY_EXTENSION_NEXT);
+	short s_kind = !(no_copy_flags & NO_COPY_EXTENSION_APP ) ? -1 : 255;
+
+	Gif_Extension *prev = NULL, *curx = dest, *list = (Gif_Extension *)src;
+	do {
+		if (list->kind != s_kind) {
+			if(!curx) // if curx is null, make new obj
+				curx = Gif_New(Gif_Extension);
+			if (Gif_InitExtension(curx, list->kind, list->appname, list->applength)) {
+				curx->packetized = list->packetized;
+				if (curx->data) {
+					if (!(curx->data = Gif_NewArray(unsigned char, list->length))) {
+						done_ok = false;
+						goto done;
+					}
+					memcpy(curx->data, list->data, (curx->length = list->length));
+				}
+				if((curx->prev = prev)) // 1. set the previous link of current el
+					prev->next = curx;  // 2. set the next link of previous el
+				prev = curx; // 3. swap previous to current links
+				curx = NULL; // 4. clear current link
+			}
+		}
+	} while (do_copy && (list = list->next));
+
+ done:
+	if (curx)
+		Gif_Delete(curx);
+	return done_ok;
 }
 
-void Gif_CopyExtensionsList(Gif_Stream *gst, Gif_Image *gim, Gif_Extension *list, int kind_filter)
-{
-	Gif_Extension *gfex;
-	do {
-		if (list->kind != kind_filter) {
-			gfex = Gif_New(Gif_Extension);
-			if (Gif_CopyExtension(gfex, list))
-				Gif_AddExtension(gst, gim, gfex);
-		}
-	} while ((list = list->next));
-}
 
 
 /*
@@ -380,18 +401,24 @@ int Gif_IndexOfImage(Gif_Image **arr, const int len, const Gif_Image *img)
 	return -1;
 }
 
-void Gif_AddExtension(Gif_Stream* gfs, Gif_Image* gfi, Gif_Extension* gfex)
+int Gif_PutExtension(Gif_Extension *dst_list, Gif_Extension *gfex)
 {
-	if (gfex->stream || gfex->image)
-		return;
-	Gif_Extension **pprev = (
-		gfi ? &gfi->extension_list : &gfs->end_extension_list);
-	while(*pprev)
-	       pprev = &(*pprev)->next;
-	      *pprev = gfex;
-	gfex->stream = gfs;
-	gfex->image  = gfi;
-	gfex->next   = NULL;
+	Gif_Extension *prev = dst_list;
+	int cnt = 0;
+
+	do { cnt++;
+		if (gfex == prev)
+			return -1;
+	} while ((prev = prev->prev));
+
+	for (prev = dst_list; prev->next; cnt++) {
+		if (gfex == (prev = prev->next))
+			return -1;
+	}
+	prev->next = gfex;
+	gfex->prev = prev;
+	gfex->next = NULL;
+	return cnt;
 }
 
 int Gif_PutImage(Gif_Stream *gfs, Gif_Image *gfi)
@@ -548,9 +575,11 @@ void Gif_FreeStream(Gif_Stream *gfs)
 	Gif_DeleteColormap(gfs->global);
 	Gif_DeleteComment (gfs->end_comment);
 
-	while (gfs->end_extension_list)
+	if (gfs->end_extension_list) {
+		while (gfs->end_extension_list->next)
+			Gif_DeleteExtension(gfs->end_extension_list->next);
 		Gif_DeleteExtension(gfs->end_extension_list);
-
+	}
 	Gif_Delete(gfs);
 }
 
@@ -561,9 +590,11 @@ void Gif_FreeImage(Gif_Image *gfi)
 	Gif_DeleteArray(gfi->identifier);
 	Gif_DeleteComment(gfi->comment);
 
-	while (gfi->extension_list)
+	if (gfi->extension_list) {
+		while (gfi->extension_list->next)
+			Gif_DeleteExtension(gfi->extension_list->next);
 		Gif_DeleteExtension(gfi->extension_list);
-
+	}
 	Gif_DeleteColormap(gfi->local);
 
 	if (gfi->image_data)
@@ -603,16 +634,11 @@ void Gif_FreeExtension(Gif_Extension *gfex)
 		Gif_DeleteArray(gfex->data);
 	if (gfex->appname)
 		Gif_DeleteArray(gfex->appname);
-
-	if (gfex->stream || gfex->image) {
-		Gif_Extension** pprev = (
-			gfex->image ? &gfex->image->extension_list : &gfex->stream->end_extension_list
-		);
-		while(*pprev  && *pprev != gfex)
-		       pprev = &(*pprev)->next;
-		if   (*pprev)
-		      *pprev = gfex->next;
-	}
+	if (gfex->prev)
+		gfex->prev->next = gfex->next;
+	if (gfex->next)
+		gfex->next->prev = gfex->prev;
+	gfex->next = gfex->prev = NULL;
 	Gif_Delete(gfex);
 }
 

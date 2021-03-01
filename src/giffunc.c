@@ -265,24 +265,26 @@ int Gif_CpyIndent(Gif_Comment *gcom, const char *str, unsigned len)
 /*
   Extension constructor functions
 */
-bool Gif_InitExtension(Gif_Extension *gfex, int kind, const char *name, unsigned len)
+bool Gif_InitExtension(Gif_Extension *gfex, short kind, const char *name, unsigned len)
 {
 	if (!gfex)
 		return false;
-	if (name && (gfex->appname = Gif_NewArray(char, len + 1))) {
-		memcpy(gfex->appname, name, len);
-		gfex->appname[len] = '\0';
-		gfex->applength = len;
-	} else {
-		gfex->appname = NULL;
-		gfex->applength = 0;
-	}
+
 	gfex->kind = kind;
-	gfex->data = NULL;
+	gfex->appname = gfex->data = NULL;
+	gfex->applength = gfex->length = 0;
+	gfex->packetized = false;
+
+	char *appname = name ? Gif_NewArray(char, (len ?: (len = strlen(name))) + 1) : NULL;
+	if (  appname  ) {
+		strncpy(appname, name, len);
+		appname[len] = '\0';
+		gfex->appname = appname;
+		gfex->applength = len;
+	}
 	gfex->stream = NULL;
 	gfex->image = NULL;
 	gfex->next = NULL;
-	gfex->packetized = gfex->length = 0;
 	return true;
 }
 

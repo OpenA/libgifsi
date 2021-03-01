@@ -599,7 +599,7 @@ read_name_extension(Gif_Reader *grr, Gif_Image *gim)
 
 static void
 read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
-                       int kind, char *appname, int applength)
+                       short kind, const char *appname, unsigned applength)
 {
 	unsigned int    len = 0;
 	unsigned char  size = 0;
@@ -625,7 +625,7 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 	if (Gif_InitExtension(gext, kind, appname, applength)) {
 		gext->data       = data;
 		gext->length     = len;
-		gext->packetized = 1;
+		gext->packetized = true;
 		gext->data[len]  = 0;
 		Gif_AddExtension(gfs, gfi, gext);
 	} else

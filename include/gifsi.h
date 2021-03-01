@@ -257,14 +257,15 @@ int Gif_CpyIndent(Gif_Comment *, const char *str, unsigned len);
 
 
 
-//  Extension class
+/* - - - - - - - *
+   Extension (list) object
+ * - - - - - - - */
 struct Gif_Extension {
-	int kind; /* negative kinds are reserved */
-	char* appname;
-	int applength;
-	unsigned char* data;
-	unsigned int length;
-	int packetized;
+	short kind; // negative kinds are reserved
+	const char *appname;
+	unsigned char *data;
+	unsigned int length, applength;
+	bool packetized;
 
 	Gif_Stream *stream;
 	Gif_Image *image;
@@ -272,7 +273,7 @@ struct Gif_Extension {
 };
 
 //  Extension init/copy/destroy
-bool Gif_InitExtension(Gif_Extension *gfex, const int kind, const char *name, unsigned len);
+bool Gif_InitExtension(Gif_Extension *gfex, short kind, const char *name, unsigned len);
 bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src);
 void Gif_FreeExtension(Gif_Extension *);
 

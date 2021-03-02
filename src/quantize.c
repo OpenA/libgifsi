@@ -20,6 +20,9 @@ unsigned short *gamma_tables[2] = {
 	(unsigned short *)srgb_gamma_table_256,
 	(unsigned short *)srgb_revgamma_table_256};
 
+typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
+                              kd3_tree  *, unsigned int  *, Gif_ColorTransform *);
+
 /* return the gamma transformation of `*gfc` */
 kcolor kc_Make8g(const Gif_Color gfc)
 {
@@ -570,10 +573,10 @@ static void colormap_diversity_do_blend(kcdiversity *div)
 	}
 }
 
-static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_DitherPlan *dp, bool do_blend)
+static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_ColorTransform *cot, bool do_blend)
 {
 	kcdiversity div;
-	bool do_dither = (bool)dp->type;
+	bool do_dither = (bool)cot->dither_plan;
 	int nadapt = 0;
 	int chosen;
 
@@ -619,7 +622,7 @@ static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_DitherPlan *
 	kcdiversity_cleanup(&div);
 }
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, unsigned *ncol, char alg, Gif_DitherPlan *dp)
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_CDiversity alg, unsigned *ncol, Gif_ColorTransform *cot)
 {
 	Gif_Colormap *gfcm;
 	unsigned ntransp, adapt_size = *ncol;
@@ -644,11 +647,11 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, unsigned *ncol, char alg, 
 	*ncol = kch.n;
 	Gif_NewColormap(gfcm, adapt_size);
 
-	if (alg == COLORMAP_MEDIAN_CUT) {
+	if (alg == CD_MedianCut) {
 		colormap_median_cut(&kch, gfcm);
 	} else {
-		colormap_diversity(&kch, gfcm, dp, (
-			alg == COLORMAP_DIVERSITY_BLEND && adapt_size >= 4));
+		colormap_diversity(&kch, gfcm, cot, (
+			alg == CD_Blend && adapt_size >= 4));
 	}
 	kchist_cleanup(&kch);
 	return gfcm;
@@ -936,7 +939,8 @@ void colormap_image_posterize(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	Gif_DitherPlan *dp
+
+	Gif_ColorTransform *cot
 ) {
 	Gif_Color *col = old_cm->col;
 	int i, ncol = old_cm->ncol;
@@ -972,7 +976,8 @@ void colormap_image_floyd_steinberg(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	Gif_DitherPlan *dp
+
+	Gif_ColorTransform *cot
 ) {
 	static int *random_values = 0;
 
@@ -1382,10 +1387,11 @@ static void colormap_image_ordered(
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
-	Gif_DitherPlan *dp
+
+	Gif_ColorTransform *cot
 ) {
-	unsigned char mw = dp->matrix[0], nplan = dp->matrix[2],
-	              mh = dp->matrix[1], ncols = dp->matrix[3];
+	unsigned char mw = cot->dpMatrix[0], nplan = cot->dpMatrix[2],
+	              mh = cot->dpMatrix[1], ncols = cot->dpMatrix[3];
 
 	/* Written with reference to Joel Ylilouma's versions. */
 	unsigned char *plan = Gif_NewArray(unsigned char, nplan * old_cm->ncol);
@@ -1398,7 +1404,7 @@ static void colormap_image_ordered(
 
 	/* Do the image! */
 	if ((mw & (mw - 1)) == 0 && (mh & (mh - 1)) == 0 && (nplan & (nplan - 1)) == 0) {
-		pow2_ordered_dither(gfi, all_new_data, old_cm, kd3, histogram, dp->matrix, plan, olums);
+		pow2_ordered_dither(gfi, all_new_data, old_cm, kd3, histogram, cot->dpMatrix, plan, olums);
 	} else {
 		for (y = 0; y < gfi->height; y++) {
 			unsigned char *new_data, *thisplan;
@@ -1411,8 +1417,8 @@ static void colormap_image_ordered(
 					if (!old_cm->col[pix].haspixel)
 						set_ordered_dither_plan(thisplan, nplan, ncols,
 						                        &old_cm->col[pix], kd3, olums);
-					i = dp->matrix[4 +  (x + gfi->left) % mw
-					                 + ((y + gfi->top ) % mh) * mw];
+					i = cot->dpMatrix[4 +  (x + gfi->left) % mw
+					                    + ((y + gfi->top ) % mh) * mw];
 					new_data[x] = thisplan[i];
 					histogram[new_data[x]]++;
 				}
@@ -1497,7 +1503,7 @@ static bool try_assign_transparency(
 }
 
 
-void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_DitherPlan *dp)
+void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_ColorTransform *cot)
 {
 	kd3_tree kd3;
 	Gif_Color *new_col = new_colmap->col;
@@ -1528,6 +1534,11 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Dithe
 	}
 	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_colmap);
 
+	_dith_work_fn do_DitherTransform = (
+		cot->dither_plan == DiP_Posterize      ? colormap_image_posterize :
+		cot->dither_plan == DiP_FloydSteinberg ? colormap_image_floyd_steinberg :
+		/*  ordered dither plan */               colormap_image_ordered
+	);
 	for (i = 0; i < gfs->nimages; i++) {
 
 		Gif_Image    *gfi  =  gfs->images[i];
@@ -1550,7 +1561,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Dithe
 			do {
 				for (j = 0; j < 256; j++)
 					histogram[j] = 0;
-				dp->doWork(gfi, new_data, gfcm, &kd3, histogram, dp);
+				do_DitherTransform(gfi, new_data, gfcm, &kd3, histogram, cot);
 			} while (try_assign_transparency(gfi, gfcm, new_data, new_colmap, &new_ncol,
 											 &kd3, histogram));
 
@@ -1754,51 +1765,100 @@ static unsigned char *make_halftone_matrix_triangular(int w, int h, int nc)
 }
 
 
-void Gif_InitDitherPlan(Gif_DitherPlan *dp, Gif_Dither type, unsigned char w, unsigned char h, unsigned ncol)
+bool Gif_InitColorTransform(Gif_ColorTransform *cot)
 {
-	dp->matrix = NULL;
-	dp->type   = type;
+	if (!cot) return false;
+	cot->dpMatrix    = NULL;
+	cot->dither_plan = DiP_Posterize;
+	cot->GammaTab    = srgb_gamma_table_256;
+	cot->RGammaTab   = srgb_revgamma_table_256;
+	cot->gamma_range = 2.2;
+	cot->gamma_type  = GK_SRGB;
+	return true;
+}
 
-	if (type == DiP_Posterize) {
-		dp->doWork = (_dith_work_fn)colormap_image_posterize;
+void Gif_FreeColorTransform(Gif_ColorTransform *cot)
+{
+	if (cot->dpMatrix)
+		Gif_DeleteArray(cot->dpMatrix);
+	if (cot->GammaTab != srgb_gamma_table_256)
+		Gif_DeleteArray(cot->GammaTab);
+	if (cot->RGammaTab != srgb_revgamma_table_256)
+		Gif_DeleteArray(cot->RGammaTab);
+}
+
+void Gif_SetDitherPlan(
+	Gif_ColorTransform *cot,
+	Gif_Dither plan,
+	unsigned char w,
+	unsigned char h,
+	unsigned int ncol
+) {
+	if (plan == DiP_SquareHalftone) {
+		cot->dpMatrix = make_halftone_matrix_square(w, h, ncol);
 	} else
-	if (type == DiP_FloydSteinberg) {
-		dp->doWork = (_dith_work_fn)colormap_image_floyd_steinberg;
-	} else
-	if (type == DiP_SquareHalftone) {
-		dp->doWork = (_dith_work_fn)colormap_image_ordered;
-		dp->matrix = make_halftone_matrix_square(w, h, ncol);
-	} else
-	if (type == DiP_TriangleHalftone) {
-		dp->doWork = (_dith_work_fn)colormap_image_ordered;
-		dp->matrix = make_halftone_matrix_triangular(w, h, ncol);
+	if (plan == DiP_TriangleHalftone) {
+		cot->dpMatrix = make_halftone_matrix_triangular(w, h, ncol);
 	} else {
 		const unsigned size = (
-			type == DiP_3x3_Ordered     ? DiMx_3X3_SIZE :
-			type == DiP_4x4_Ordered     ? DiMx_4X4_SIZE :
-			type == DiP_64x64_ReOrdered ? DiMx_64X64_SIZE : DiMx_8X8_SIZE
+			plan == DiP_3x3_Ordered     ? DiMx_3X3_SIZE :
+			plan == DiP_4x4_Ordered     ? DiMx_4X4_SIZE :
+			plan == DiP_64x64_ReOrdered ? DiMx_64X64_SIZE : DiMx_8X8_SIZE
 		);
 		unsigned char *matrix = Gif_NewArray(unsigned char, size);
 
 		memcpy(matrix, (
-			type == DiP_3x3_Ordered ? Dither_Matrix_o3x3 :
-			type == DiP_4x4_Ordered ? Dither_Matrix_o4x4 :
-			type == DiP_8x8_Ordered ? Dither_Matrix_o8x8 :
-			type == DiP_45_Diagonal ? Dither_Matrix_diagonal45_8 :
-			type == DiP_64x64_ReOrdered ? Dither_Matrix_ro64x64 : Dither_Matrix_halftone8
+			plan == DiP_3x3_Ordered ? Dither_Matrix_o3x3 :
+			plan == DiP_4x4_Ordered ? Dither_Matrix_o4x4 :
+			plan == DiP_8x8_Ordered ? Dither_Matrix_o8x8 :
+			plan == DiP_45_Diagonal ? Dither_Matrix_diagonal45_8 :
+			plan == DiP_64x64_ReOrdered ? Dither_Matrix_ro64x64 : Dither_Matrix_halftone8
 		), size);
 
 		if (ncol >= 2 && h > 1 && h != matrix[3])
 			matrix[3] = h;
-
-		dp->doWork = (_dith_work_fn)colormap_image_ordered;
-		dp->matrix = matrix;
+		cot->dpMatrix = matrix;
 	}
+	cot->dither_plan = plan;
 }
 
-void Gif_FreeDitherPlan(Gif_DitherPlan *dp)
-{
-	Gif_DeleteArray(dp->matrix);
-	dp->doWork = NULL;
+void Gif_SetGamma(Gif_ColorTransform *cot, Gif_Gamma type, double range) {
+#if HAVE_POW
+	if (type == cot->gamma_type && (type != GK_Numeric || range == cot->gamma_range))
+		return;
+	bool is_srgb_g = cot->GammaTab == srgb_gamma_table_256,
+	     is_srgb_rg = cot->RGammaTab == srgb_revgamma_table_256;
+	if (type == GK_SRGB) {
+		if (!is_srgb_g) {
+			Gif_FreeArray(cot->GammaTab);
+			cot->GammaTab = srgb_gamma_table_256;
+		}
+		if (!is_srgb_rg) {
+			Gif_FreeArray(cot->RGammaTab);
+			cot->RGammaTab = srgb_revgamma_table_256;
+		}
+	} else {
+		unsigned short * gamma_tab = is_srgb_g  ? Gif_NewArray(unsigned short, 256) : (unsigned short *)cot->GammaTab;
+		unsigned short *rgamma_tab = is_srgb_rg ? Gif_NewArray(unsigned short, 256) : (unsigned short *)cot->RGammaTab;
+
+		for (int j = 0; j < 256; j++) {
+			 gamma_tab[j] = (int)(pow(j / 255.0,     range) * INT16_MAX + 0.5);
+			rgamma_tab[j] = (int)(pow(j / 256.0, 1 / range) * INT16_MAX + 0.5);
+		/* The gamma_tables[i][j]++ ensures that round-trip gamma correction
+		   always preserve the input colors. Without it, one might have,
+		   for example, input values 0, 1, and 2 all mapping to
+		   gamma-corrected value 0. Then a round-trip through gamma
+		   correction loses information. */
+			while (j > 0 &&  gamma_tab[j] <=  gamma_tab[j - 1] &&  gamma_tab[j] < INT16_MAX)
+				 gamma_tab[j]++;
+			while (j > 0 && rgamma_tab[j] <= rgamma_tab[j - 1] && rgamma_tab[j] < INT16_MAX)
+				rgamma_tab[j]++;
+		}
+		cot->GammaTab  =  gamma_tab;
+		cot->RGammaTab = rgamma_tab;
+	}
+#endif
+	cot->gamma_type  = type;
+	cot->gamma_range = range;
 }
 

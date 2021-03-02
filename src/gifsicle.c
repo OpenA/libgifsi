@@ -907,9 +907,9 @@ set_new_fixed_colormap(const char *name)
 static void
 do_colormap_change(Gif_Stream *gfs)
 {
-  Gif_DitherPlan dp;
-
-  Gif_InitDitherPlan(&dp,
+  Gif_ColorTransform dp;
+  Gif_InitColorTransform(&dp);
+  Gif_SetDitherPlan(&dp,
       active_output_data.dither_type,
       active_output_data.dither_data[0],
       active_output_data.dither_data[1],
@@ -933,12 +933,11 @@ do_colormap_change(Gif_Stream *gfs)
     if (ncols < 2 || ncols > 256)
       fatal_error("adaptive palette size must be between 2 and 256");
 
-    if (cm_alg != COLORMAP_DIVERSITY_FLAT  &&
-        cm_alg != COLORMAP_DIVERSITY_BLEND &&
-        cm_alg != COLORMAP_MEDIAN_CUT)
+    if (cm_alg != CD_Flat && cm_alg != CD_Blend && cm_alg != CD_MedianCut) {
+        Gif_FreeColorTransform(&dp);
         fatal_error("wrong colormap algorithm");
-
-    new_cm = Gif_NewDiverseColormap(gfs, &ncols, cm_alg, &dp);
+    }
+    new_cm = Gif_NewDiverseColormap(gfs, cm_alg, &ncols, &dp);
 
     if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
       warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
@@ -946,7 +945,7 @@ do_colormap_change(Gif_Stream *gfs)
       Gif_FullQuantizeColors(gfs, new_cm, &dp);
     Gif_DeleteColormap(new_cm);
   }
-  Gif_FreeDitherPlan(&dp);
+  Gif_FreeColorTransform(&dp);
 }
 
 
@@ -1254,10 +1253,10 @@ initialize_def_frame(void)
 
   def_output_data.colormap_size = 0;
   def_output_data.colormap_fixed = 0;
-  def_output_data.colormap_algorithm = COLORMAP_DIVERSITY_FLAT;
+  def_output_data.colormap_algorithm = CD_Flat;
   def_output_data.dither_type = DiP_Posterize;
   def_output_data.dither_name = "none";
-  def_output_data.colormap_gamma_type = KC_GAMMA_SRGB;
+  def_output_data.colormap_gamma_type = GK_SRGB;
   def_output_data.colormap_gamma = 2.2;
 
   def_output_data.optimizing = 0;
@@ -1523,9 +1522,9 @@ main(int argc, char *argv[])
      (const char*) 0);
   Clp_AddStringListType
     (clp, COLORMAP_ALG_TYPE, 0,
-     "diversity", COLORMAP_DIVERSITY_FLAT,
-     "blend-diversity", COLORMAP_DIVERSITY_BLEND,
-     "median-cut", COLORMAP_MEDIAN_CUT,
+     "diversity", CD_Flat,
+     "blend-diversity", CD_Blend,
+     "median-cut", CD_MedianCut,
      (const char*) 0);
   Clp_AddStringListType
     (clp, OPTIMIZE_TYPE, Clp_AllowNumbers,

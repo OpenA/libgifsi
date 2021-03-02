@@ -57,6 +57,9 @@ typedef struct Gif_Error      Gif_Error;
 typedef enum   Gif_eModule    Gif_eModule;
 typedef enum   Gif_eLevel     Gif_eLevel;
 typedef enum   Gif_Disposal   Gif_Disposal;
+typedef enum   Gif_CDiversity Gif_CDiversity;
+typedef enum   Gif_Dither     Gif_Dither;
+typedef enum   Gif_Gamma      Gif_Gamma;
 
 typedef void (*Gif_eHandler) (Gif_Stream *, Gif_eModule, Gif_Error);
 
@@ -305,6 +308,18 @@ int  Gif_PutExtension (Gif_Extension *list, Gif_Extension *gfex);
 
 void Gif_FullOptimizeFragments(Gif_Stream *, int, int, Gif_CompressInfo *);
 
+
+
+/* - - - - - - - - - *
+   Color Transforms
+ * - - - - - - - - - */
+typedef struct Gif_ColorTransform Gif_ColorTransform;
+
+/* Gamma type */
+enum Gif_Gamma {
+	GK_SRGB = 0,
+	GK_Numeric
+};
 /* Quantization */
 enum Gif_Dither {
 	DiP_Posterize = 0,
@@ -318,26 +333,34 @@ enum Gif_Dither {
 	DiP_TriangleHalftone
 };
 
-typedef struct Gif_DitherPlan Gif_DitherPlan;
-typedef enum   Gif_Dither     Gif_Dither;
-typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
-                              void *, unsigned *, Gif_DitherPlan *);
+struct Gif_ColorTransform {
 
-struct Gif_DitherPlan {
-	Gif_Dither type;
-	const unsigned char *matrix;
-	_dith_work_fn  doWork;
+	Gif_Dither dither_plan;
+	Gif_Gamma  gamma_type;
+
+	double gamma_range;
+
+	const unsigned short *GammaTab, *RGammaTab;
+	const unsigned char  *dpMatrix;
 };
 
-void Gif_InitDitherPlan(Gif_DitherPlan *, Gif_Dither, unsigned char, unsigned char, unsigned);
-void Gif_FreeDitherPlan(Gif_DitherPlan *);
+bool Gif_InitColorTransform(Gif_ColorTransform *);
+void Gif_FreeColorTransform(Gif_ColorTransform *);
 
-#define COLORMAP_DIVERSITY_FLAT  0
-#define COLORMAP_DIVERSITY_BLEND 1
-#define COLORMAP_MEDIAN_CUT      2
+// sets the quantization plan with WxH matrix size and num colors in pallete
+void Gif_SetDitherPlan(Gif_ColorTransform *, Gif_Dither plan, unsigned char w, unsigned char h, unsigned ncols);
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, unsigned *ncol, char alg, Gif_DitherPlan *);
-void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap, Gif_DitherPlan *);
+// sets the gamma type and range
+void Gif_SetGamma(Gif_ColorTransform *, Gif_Gamma type, double range);
+
+enum Gif_CDiversity {
+	CD_Flat = 0,
+	CD_Blend,
+	CD_MedianCut
+};
+
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_CDiversity, unsigned *ncol, Gif_ColorTransform *);
+void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *);
 
 
 /** READING AND WRITING **/

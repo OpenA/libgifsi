@@ -14,7 +14,6 @@
 #include <limits.h>
 #include <ctype.h>
 #include <math.h>
-#include <time.h>
 
 unsigned short *gamma_tables[2] = {
 	(unsigned short *)srgb_gamma_table_256,
@@ -971,21 +970,27 @@ void colormap_image_posterize(
 #define N_RANDOM_VALUES 512
 
 void colormap_image_floyd_steinberg(
-	Gif_Image     *gfi,
-	unsigned char *all_new_data,
+	Gif_Image     *gim,
+	unsigned char *new_data,
 	Gif_Colormap  *old_cm,
 	kd3_tree      *kd3,
 	unsigned      *histogram,
 
 	Gif_ColorTransform *cot
 ) {
-	static int *random_values = 0;
+  /* This code was written with reference to ppmquant by Jef Poskanzer, part
+     of the pbmplus package. */
+	const unsigned short width  = gim->width, left = gim->left;
+	const unsigned short height = gim->height, top = gim->top;
+	const   signed short transp = gim->transparent;
+	const unsigned int   ersize = (unsigned)width + 2;
 
-	int width = gfi->width;
-	int dither_direction = 0;
-	int transparent = gfi->transparent;
-	int i, j, k;
-	wkcolor *err, *err1;
+	unsigned short x, y;
+	unsigned int   i, j;
+
+	char direct = 1;
+	bool   _0x_ = 0,
+	       _1x_ = 1;
 
 	/* Initialize distances */
 	for (i = 0; i < old_cm->ncol; i++) {
@@ -993,111 +998,98 @@ void colormap_image_floyd_steinberg(
 		c->pixel = kd3_closest8g(kd3, old_cm->col[i]);
 		c->haspixel = 1;
 	}
-  /* This code was written with reference to ppmquant by Jef Poskanzer, part
-     of the pbmplus package. */
-
   /* Initialize Floyd-Steinberg error vectors to small random values, so we
      don't get artifacts on the top row */
-	err  = Gif_NewArray(wkcolor, width + 2);
-	err1 = Gif_NewArray(wkcolor, width + 2);
+	wkcolor err[2][ersize];
+
   /* Use the same random values on each call in an attempt to minimize
     "jumping dithering" effects on animations */
-	if (!random_values) {
-		srand(time(NULL)); // init random number generator
-		random_values = Gif_NewArray(int, N_RANDOM_VALUES);
-		for (i = 0; i < N_RANDOM_VALUES; i++)
-			random_values[i] = rand() % (DITHER_SCALE_M1 * 2) - DITHER_SCALE_M1;
-	}
-	for (i = 0; i < gfi->width + 2; i++) {
-		j = (i + gfi->left) * 3;
-		for (k = 0; k < 3; ++k)
-			err[i].a[k] = random_values[(j + k) % N_RANDOM_VALUES];
+	const short *randv = (const short *)cot->dpMatrix;
+	const char  fus[3] = { 2, 0, 1 }; /* used for error diffusion */
+
+	/* err0 initialize */
+	for (i = 0; i < ersize; i++) {
+		 j = (i + left) * 3;
+		err[0][i].a[0] = randv[(j + 0) % N_RANDOM_VALUES];
+		err[0][i].a[1] = randv[(j + 1) % N_RANDOM_VALUES];
+		err[0][i].a[2] = randv[(j + 2) % N_RANDOM_VALUES];
 	}
 	/* err1 initialized below */
 
 	kd3_build_xradius(kd3);
 
 	/* Do the image! */
-	for (j = 0; j < gfi->height; j++) {
-		int d0, d1, d2, d3; /* used for error diffusion */
-		unsigned char *data, *new_data;
-		int x;
+	for (j = x = y = 0; y < height; y++) {
 
-		if (dither_direction) {
-			x = width - 1;
-			d0 = 0, d1 = 2, d2 = 1, d3 = 0;
-		} else {
-			x = 0;
-			d0 = 2, d1 = 0, d2 = 1, d3 = 2;
-		}
-		data = &gfi->img[j][x];
-		new_data = all_new_data + j * (unsigned)width + x;
-
-		for (i = 0; i < width + 2; i++) {
-			err1[i].a[0] = err1[i].a[1] = err1[i].a[2] = 0;
+		/* clear target err */
+		for (i = 0; i < ersize; i++) {
+			err[_1x_][i].a[0] = 0;
+			err[_1x_][i].a[1] = 0;
+			err[_1x_][i].a[2] = 0;
 		}
 		/* Do a single row */
-		while (x >= 0 && x < width) {
-			int e;
+		for (; x >= 0 && x < width; x += direct, j += direct)
+		{
+			unsigned char pix = gim->img[y][x];
 
 			/* the transparent color never gets adjusted */
-			if (*data == transparent)
-				goto next;
+			if (pix == transp)
+				continue;
 
 			/* find desired new color */
-			Gif_Color old_c = old_cm->col[*data];
+			unsigned opx = old_cm->col[pix].pixel;
 			kcolor use = KC_Set8g(gamma_tables[0],
-				old_c.R, old_c.G, old_c.B
+				old_cm->col[pix].R,
+				old_cm->col[pix].G,
+				old_cm->col[pix].B
 			);
 			if (kd3->transform)
 				kd3->transform(&use);
 			/* use Floyd-Steinberg errors to adjust */
-			for (k = 0; k < 3; k++) {
-				int v = use.a[k] + (err[x + 1].a[k] & ~(DITHER_ITEM2ERR - 1)) / DITHER_ITEM2ERR;
+			for(int k = 0; k < 3; k++) {
+				int v = (int)use.a[k] + (err[_0x_][x + 1].a[k] & ~(DITHER_ITEM2ERR - 1)) / DITHER_ITEM2ERR;
 				use.a[k] = KC_ClampV(v);
 			}
-			e = old_c.pixel;
-			if (kc_distance(&kd3->ks[e], &use) < kd3->xradius[e])
-				*new_data = e;
-			else
-				*new_data = kd3_closest_transformed(kd3, &use, NULL);
-			histogram[*new_data]++;
+			if (kc_distance(&kd3->ks[opx], &use) >= kd3->xradius[opx])
+				opx = kd3_closest_transformed(kd3, &use, NULL);
+			new_data[j] = opx;
+			histogram[opx]++;
 
 		  /* calculate and propagate the error between desired and selected color.
 		     Assume that, with a large scale (1024), we don't need to worry about
 		     image artifacts caused by error accumulation (the fact that the
 		     error terms might not sum to the error). */
-			for (k = 0; k < 3; k++) {
-				e = (use.a[k] - kd3->ks[*new_data].a[k]) * DITHER_ITEM2ERR;
-				if (e) {
-					err [x + d0].a[k] += ((e * 7) & ~15) / 16;
-					err1[x + d1].a[k] += ((e * 3) & ~15) / 16;
-					err1[x + d2].a[k] += ((e * 5) & ~15) / 16;
-					err1[x + d3].a[k] += ( e      & ~15) / 16;
+			for(int k = 0; k < 3; k++) {
+				int v = (int)(use.a[k] - kd3->ks[opx].a[k]) * DITHER_ITEM2ERR;
+				if (v) {
+					err[_0x_][x + fus[_0x_]].a[k] += ((v * 7) & ~15) / 16;
+					err[_1x_][x + fus[_1x_]].a[k] += ((v * 3) & ~15) / 16;
+					err[_1x_][x + fus[ 2  ]].a[k] += ((v * 5) & ~15) / 16;
+					err[_1x_][x + fus[_0x_]].a[k] += ( v      & ~15) / 16;
 				}
 			}
-
-		next:
-			if (dither_direction)
-				x--, data--, new_data--;
-			else
-				x++, data++, new_data++;
 		}
-		/* Did a single row */
-
 		/* change dithering directions */
-		{
-			wkcolor *temp = err1;
-			err1 = err;
-			err = temp;
-			dither_direction = !dither_direction;
+		if ((direct = -direct) == -1) {
+			x = width - 1;
+			j = ((unsigned)y + 2) * (unsigned)width - 1;
+		} else {
+			x = 0;
+			j = ((unsigned)y + 1) * (unsigned)width;
 		}
+		_0x_ ^= 1;
+		_1x_ ^= 1;
 	}
-	/* delete temporary storage */
-	Gif_DeleteArray(err);
-	Gif_DeleteArray(err1);
 }
 
+static unsigned char *make_floydstein_matrix_rand(unsigned seed)
+{
+	short i, *random_values = Gif_NewArray(short, N_RANDOM_VALUES);
+	srand(seed);
+	for (i = 0; i < N_RANDOM_VALUES; i++)
+		random_values[i] = rand() % (DITHER_SCALE_M1 * 2) - DITHER_SCALE_M1;
+	return (unsigned char *)random_values;
+}
 
 typedef struct ODSP_item { // odselect_plan_item
 	unsigned char plan;
@@ -1794,6 +1786,9 @@ void Gif_SetDitherPlan(
 	unsigned char h,
 	unsigned int ncol
 ) {
+	if (plan == DiP_FloydSteinberg) {
+		cot->dpMatrix = make_floydstein_matrix_rand(w * h + ncol);
+	} else
 	if (plan == DiP_SquareHalftone) {
 		cot->dpMatrix = make_halftone_matrix_square(w, h, ncol);
 	} else

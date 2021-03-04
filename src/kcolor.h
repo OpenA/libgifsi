@@ -83,6 +83,8 @@ typedef union kacolor {
 #endif
 } kacolor;
 
+/* set `a0/a1/a2/a3` (RGBA) */
+#define KA_Set(r,g,b,t) { .a = { r,g,b,t } };
 /* set `a0/a1/a2/a3` (RGBA) to `0` */
 #define KA_Clear(ka) (ka.a[0] = ka.a[1] = ka.a[2] = ka.a[3] = 0)
 
@@ -211,21 +213,8 @@ typedef union scale_color {
 	float4 a;
 } scale_color;
 
-static inline scale_color sc_makekc(const kcolor* k) {
-	scale_color sc;
-	sc.a[0] = k->a[0];
-	sc.a[1] = k->a[1];
-	sc.a[2] = k->a[2];
-	sc.a[3] = KC_MAX;
-	return sc;
-}
-
-static inline scale_color sc_make(float a0, float a1, float a2, float a3) {
-	scale_color sc;
-	sc.a[0] = a0;
-	sc.a[1] = a1;
-	sc.a[2] = a2;
-	sc.a[3] = a3;
+static inline scale_color sc_MakeKC(const kcolor k) {
+	scale_color sc = KA_Set(k.a[0], k.a[1], k.a[2], KC_MAX);
 	return sc;
 }
 

@@ -478,7 +478,7 @@ static void ksscreen_init(ksscreen* kss, Gif_Stream* gfs, int sw, int sh) {
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
         kcolor k = kc_Make8g(gfs->global->col[gfs->background], gamma_tables[0]);
-        kss->bg = sc_makekc(&k);
+        kss->bg = sc_MakeKC(k);
     } else
         KA_Clear(kss->bg);
     for (i = 0; i != sz; ++i)
@@ -512,7 +512,7 @@ static void ksscreen_apply(ksscreen* kss, const Gif_Image* gfi,
         scale_color* lineout = &kss->data[y * kss->width + gfi->left];
         for (x = 0; x != gfi->width; ++x)
             if (linein[x] != gfi->transparent)
-                lineout[x] = sc_makekc(&ks[linein[x]]);
+                lineout[x] = sc_MakeKC(ks[linein[x]]);
     }
 }
 

@@ -28,27 +28,16 @@ typedef struct kcolor {
 } kcolor;
 
 #define KC_ClampV(v) (_MAX(0, _MIN((v), KC_MAX)))
-/* set `r/g/b` */
+/* set `a0/a1/a2` (RGB) */
 #define KC_Set(r,g,b) { .a = {r,g,b} }
-/* set the gamma transformation of `r/g/b` */
+/* set the gamma transformation of `a0/a1/a2` (RGB) */
 #define KC_Set8g(gmt,r,g,b) { .a = {gmt[r], gmt[g], gmt[b]} }
 
-typedef union kacolor {
-	kcolor k;
-	short a[4];
-#if HAVE_INT64_T
-	long long q; /* to get better alignment */
-#endif
-} kacolor;
-
-/* return kcolor gamma transformation of `*gfc` */
-kcolor kc_Make8g(const Gif_Color);
-
-static inline kacolor kac_New(short r, short g, short b, short a) {
-	kacolor kac;
-	kac.a[0] = r; kac.a[1] = g;
-	kac.a[2] = b; kac.a[3] = a;
-	return kac;
+/* return kcolor gamma transformation of `gcl` */
+static inline kcolor kc_Make8g(Gif_Color gcl, const unsigned short *gammaT)
+{
+	kcolor kc = KC_Set8g(gammaT, gcl.R, gcl.G, gcl.B);
+	return kc;
 }
 
 /* return a hex color string definition for `x` */
@@ -56,7 +45,6 @@ const char* kc_debug_str(kcolor x);
 
 /* return the gramma reverse transformation Color */
 Gif_Color kc_MakeGRTColor(const kcolor);
-
 
 /* return the squared Euclidean distance between `*x` and `*y` */
 static inline unsigned kc_distance(const kcolor* x, const kcolor* y) {
@@ -86,6 +74,17 @@ static inline void kc_luminance_transform(kcolor* x) {
 	x->a[0] = x->a[1] = x->a[2] = kc_luminance(x);
 }
 
+
+typedef union kacolor {
+	kcolor k;
+	short a[4];
+#if HAVE_INT64_T
+	long long q; /* to get better alignment */
+#endif
+} kacolor;
+
+/* set `a0/a1/a2/a3` (RGBA) to `0` */
+#define KA_Clear(ka) (ka.a[0] = ka.a[1] = ka.a[2] = ka.a[3] = 0)
 
 /* wkcolor: like kcolor, but components are 32 bits instead of 16 */
 typedef struct wkcolor {
@@ -142,7 +141,14 @@ int kd3_closest_transformed(kd3_tree* kd3, const kcolor* k,
 /* given 8-bit color `a0/a1/a2` (RGB), gamma-transform it, transform it by
    `kd3->transform` if necessary, and return the index of the color in
    `*kd3` closest to it. */
-int kd3_closest8g(kd3_tree *, const Gif_Color);
+static inline int kd3_closest8g(kd3_tree *kd3, Gif_Color gcl, const unsigned short *gammaT)
+{
+	kcolor k = KC_Set8g(gammaT, gcl.R, gcl.G, gcl.B);
+
+	if (kd3->transform)
+		kd3->transform(&k);
+	return kd3_closest_transformed(kd3, &k, NULL);
+}
 
 /* disable color index `i` in `*kd3`: it will never be returned by
    `kd3_closest*` */
@@ -171,7 +177,6 @@ typedef struct kchist {
 
 kchistitem *
      kchist_add     ( kchist *, kcolor      , unsigned   );
-void kchist_make    ( kchist *, Gif_Stream *, unsigned * );
 void kchist_init    ( kchist * );
 void kchist_cleanup ( kchist * );
 void kchist_compress( kchist * );
@@ -205,10 +210,6 @@ typedef float float4[4];
 typedef union scale_color {
 	float4 a;
 } scale_color;
-
-static inline void sc_clear(scale_color* x) {
-	x->a[0] = x->a[1] = x->a[2] = x->a[3] = 0;
-}
 
 static inline scale_color sc_makekc(const kcolor* k) {
 	scale_color sc;

@@ -22,13 +22,6 @@ unsigned short *gamma_tables[2] = {
 typedef void(*_dith_work_fn)( Gif_Image *, unsigned char *, Gif_Colormap *,
                               kd3_tree  *, unsigned int  *, Gif_ColorTransform *);
 
-/* return the gamma transformation of `*gfc` */
-kcolor kc_Make8g(const Gif_Color gfc)
-{
-	kcolor kc = KC_Set8g(gamma_tables[0], gfc.R, gfc.G, gfc.B);
-	return kc;
-}
-
 static inline void unmark_pixels(Gif_Colormap *gfcm)
 {
 	for (int i = 0; i < gfcm->ncol; i++)
@@ -226,7 +219,7 @@ void kchist_compress(kchist *kch)
 	kch->capacity = 0;
 }
 
-void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
+static void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store, Gif_ColorTransform *cot)
 {
 	int c;
 	unsigned short x, y;
@@ -268,7 +261,7 @@ void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 			Gif_Colormap *cm = gfi->local;
 			for (c = 0; c < cm->ncol; c++) {
 				if (count[c] && c != transp)
-					kchist_add(kch, kc_Make8g(cm->col[c]), count[c]);
+					kchist_add(kch, kc_Make8g(cm->col[c], cot->GammaTab), count[c]);
 			}
 		}
 		if (transp >= 0 && count[transp] != prev_transp_cnt) {
@@ -295,7 +288,7 @@ void kchist_make(kchist *kch, Gif_Stream *gfs, unsigned *ntransp_store)
 	if (gcm) {
 		for (c = 0; c < gcm->ncol; c++) {
 			if (gcount[c])
-				kchist_add(kch, kc_Make8g(gcm->col[c]), gcount[c]);
+				kchist_add(kch, kc_Make8g(gcm->col[c], cot->GammaTab), gcount[c]);
 		}
 	}
 	/* now, make the linear histogram from the hashed histogram */
@@ -628,7 +621,7 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_CDiversity alg, unsign
 	kchist kch;
 
 	/* set up the histogram */
-	kchist_make(&kch, gfs, &ntransp);
+	kchist_make(&kch, gfs, &ntransp, cot);
 
 	if (adapt_size > kch.n)
 		adapt_size = kch.n;
@@ -922,16 +915,6 @@ int kd3_closest_transformed(kd3_tree *kd3, const kcolor *k, unsigned *dist_store
 	return result;
 }
 
-int kd3_closest8g(kd3_tree *kd3, const Gif_Color gfc)
-{
-	kcolor k = KC_Set8g(gamma_tables[0], gfc.R, gfc.G, gfc.B);
-
-	if (kd3->transform)
-		kd3->transform(&k);
-	return kd3_closest_transformed(kd3, &k, NULL);
-}
-
-
 void colormap_image_posterize(
 	Gif_Image     *gfi,
 	unsigned char *new_data,
@@ -941,24 +924,29 @@ void colormap_image_posterize(
 
 	Gif_ColorTransform *cot
 ) {
-	Gif_Color *col = old_cm->col;
-	int i, ncol = old_cm->ncol;
-	int map[256];
-	int transparent = gfi->transparent;
+	unsigned char **pixmap = gfi->img;
+	  signed short  transp = gfi->transparent;
+
 	unsigned short x, y;
+	unsigned int   i;
+
+	Gif_Color *colors = old_cm->col;
 
 	/* find closest colors in new colormap */
-	for (i = 0; i < ncol; i++) {
-		map[i] = col[i].pixel = kd3_closest8g(kd3, col[i]);
-		col[i].haspixel = 1;
+	for (i = 0; i < old_cm->ncol; i++) {
+		colors[i].pixel = kd3_closest8g(kd3, colors[i], cot->GammaTab);
+		colors[i].haspixel = 1;
 	}
 
 	/* map image */
 	for (i = y = 0; y < gfi->height; y++) {
 		for (x = 0; x < gfi->width;  x++, i++) {
-			unsigned char pix = gfi->img[y][x];
-			if (pix != transparent)
-				++histogram[(new_data[i] = map[pix])];
+			unsigned char pix = pixmap[y][x];
+			unsigned int  col = colors[pix].pixel;
+			if (pix != transp) {
+				histogram[col]++;
+				new_data[i] = col;
+			}
 		}
 	}
 }
@@ -987,17 +975,20 @@ void colormap_image_floyd_steinberg(
 
 	unsigned short x, y;
 	unsigned int   i, j;
+	unsigned char d0, d2;
 
 	char direct = 1;
 	bool   _0x_ = 0,
 	       _1x_ = 1;
 
+	Gif_Color *colors = old_cm->col;
+
 	/* Initialize distances */
 	for (i = 0; i < old_cm->ncol; i++) {
-		Gif_Color *c = &old_cm->col[i];
-		c->pixel = kd3_closest8g(kd3, old_cm->col[i]);
-		c->haspixel = 1;
+		colors[i].pixel = kd3_closest8g(kd3, colors[i], cot->GammaTab);
+		colors[i].haspixel = 1;
 	}
+
   /* Initialize Floyd-Steinberg error vectors to small random values, so we
      don't get artifacts on the top row */
 	wkcolor err[2][ersize];
@@ -1005,7 +996,7 @@ void colormap_image_floyd_steinberg(
   /* Use the same random values on each call in an attempt to minimize
     "jumping dithering" effects on animations */
 	const short *randv = (const short *)cot->dpMatrix;
-	const char  fus[3] = { 2, 0, 1 }; /* used for error diffusion */
+	d0 = 2, d2 = 0; /* used for error diffusion */
 
 	/* err0 initialize */
 	for (i = 0; i < ersize; i++) {
@@ -1038,7 +1029,7 @@ void colormap_image_floyd_steinberg(
 
 			/* find desired new color */
 			unsigned opx = old_cm->col[pix].pixel;
-			kcolor use = KC_Set8g(gamma_tables[0],
+			kcolor use = KC_Set8g(cot->GammaTab,
 				old_cm->col[pix].R,
 				old_cm->col[pix].G,
 				old_cm->col[pix].B
@@ -1062,19 +1053,19 @@ void colormap_image_floyd_steinberg(
 			for(int k = 0; k < 3; k++) {
 				int v = (int)(use.a[k] - kd3->ks[opx].a[k]) * DITHER_ITEM2ERR;
 				if (v) {
-					err[_0x_][x + fus[_0x_]].a[k] += ((v * 7) & ~15) / 16;
-					err[_1x_][x + fus[_1x_]].a[k] += ((v * 3) & ~15) / 16;
-					err[_1x_][x + fus[ 2  ]].a[k] += ((v * 5) & ~15) / 16;
-					err[_1x_][x + fus[_0x_]].a[k] += ( v      & ~15) / 16;
+					err[_0x_][x + d0].a[k] += ((v * 7) & ~15) / 16;
+					err[_1x_][x + d2].a[k] += ((v * 3) & ~15) / 16;
+					err[_1x_][x +  1].a[k] += ((v * 5) & ~15) / 16;
+					err[_1x_][x + d0].a[k] += ( v      & ~15) / 16;
 				}
 			}
 		}
 		/* change dithering directions */
 		if ((direct = -direct) == -1) {
-			x = width - 1;
+			x = width - 1, d0 = 0, d2 = 2;
 			j = ((unsigned)y + 2) * (unsigned)width - 1;
 		} else {
-			x = 0;
+			x = 0, d0 = 2, d2 = 0;
 			j = ((unsigned)y + 1) * (unsigned)width;
 		}
 		_0x_ ^= 1;
@@ -1502,6 +1493,9 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Color
 	int i, j, new_ncol = new_colmap->ncol;
 	bool compress_new_cm = true, new_gray = true;
 
+	Gif_Colormap  *gst_cm = gfs->global;
+	unsigned short gst_bg = gfs->background;
+
 	/* make sure colormap has enough space */
 	if (new_colmap->capacity < 256) {
 		Gif_Color *x = Gif_NewArray(Gif_Color, 256);
@@ -1534,7 +1528,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Color
 	for (i = 0; i < gfs->nimages; i++) {
 
 		Gif_Image    *gfi  =  gfs->images[i];
-		Gif_Colormap *gfcm =  gfi->local ?: gfs->global;
+		Gif_Colormap *gfcm =  gfi->local ?: gst_cm;
 		bool was_compress  = !gfi->img;
 
 		if (gfcm) {
@@ -1590,9 +1584,9 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_Color
 	new_colmap->ncol = new_ncol;
 
 	/* change the background. I hate the background by now */
-	if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0) && gfs->global && gfs->background < gfs->global->ncol) {
-		gfs->background = kd3_closest8g(&kd3, gfs->global->col[gfs->background]);
-		new_col[gfs->background].pixel++;
+	if (gst_cm && gst_bg < gst_cm->ncol && (!gfs->nimages || gfs->images[0]->transparent < 0)) {
+		gfs->background = kd3_closest8g(&kd3, gst_cm->col[gst_bg], cot->GammaTab);
+		new_col[gst_bg].pixel++;
 	}
 	else if (gfs->nimages > 0 && gfs->images[0]->transparent >= 0)
 		gfs->background = gfs->images[0]->transparent;

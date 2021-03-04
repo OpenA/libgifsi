@@ -391,7 +391,7 @@ static void kcscreen_init(kcscreen* kcs, Gif_Stream* gfs, int sw, int sh) {
     kcs->data = Gif_NewArray(kacolor, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcs->bg.k = kc_Make8g(gfs->global->col[gfs->background]);
+        kcs->bg.k = kc_Make8g(gfs->global->col[gfs->background], gamma_tables[0]);
         kcs->bg.a[3] = KC_MAX;
     } else
         kcs->bg.a[0] = kcs->bg.a[1] = kcs->bg.a[2] = kcs->bg.a[3] = 0;
@@ -477,10 +477,10 @@ static void ksscreen_init(ksscreen* kss, Gif_Stream* gfs, int sw, int sh) {
     kss->data = Gif_NewArray(scale_color, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcolor k = kc_Make8g(gfs->global->col[gfs->background]);
+        kcolor k = kc_Make8g(gfs->global->col[gfs->background], gamma_tables[0]);
         kss->bg = sc_makekc(&k);
     } else
-        sc_clear(&kss->bg);
+        KA_Clear(kss->bg);
     for (i = 0; i != sz; ++i)
         kss->data[i] = kss->bg;
 }
@@ -676,7 +676,7 @@ static void scale_image_output_row(scale_context* sctx, scale_color* sc,
 
     for (xo = 0; xo != gfo->width; ++xo)
         if (sc[xo].a[3] <= (int) (KC_MAX / 4))
-            oscr[xo] = kac_New(0,0,0,0);
+            KA_Clear(oscr[xo]);
         else {
             /* don't effectively mix partially transparent pixels with black */
             if (sc[xo].a[3] <= (int) (KC_MAX * 31 / 32))
@@ -706,7 +706,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
                 kchist_add(&kch, xscr[xo].k, 1);
     }
     for (i = 0; i != gfcm->ncol; ++i)
-        kchist_add(&kch, kc_Make8g(gfcm->col[i]), UINT32_MAX);
+        kchist_add(&kch, kc_Make8g(gfcm->col[i], gamma_tables[0]), UINT32_MAX);
     kchist_compress(&kch);
 
     kcdiversity_init(&div, &kch, 0);
@@ -859,7 +859,7 @@ static void scale_image_data_box(scale_context* sctx, Gif_Image* gfo) {
         pixel_range ypr = make_pixel_range(yo + gfo->top, sctx->oscr.height,
                                            sctx->iscr.height, sctx->oyf);
         for (xo = 0; xo != gfo->width; ++xo)
-            sc_clear(&sc[xo]);
+            KA_Clear(sc[xo]);
         for (xo = 0; xo != gfo->width; ++xo)
             nsc[xo] = 0;
 
@@ -931,7 +931,7 @@ static void scale_image_data_mix(scale_context* sctx, Gif_Image* gfo) {
                                              sctx->iscr.height, sctx->oyf);
 
         for (xo = 0; xo != gfo->width; ++xo)
-            sc_clear(&sc[xo]);
+            KA_Clear(sc[xo]);
 
         /* collect input mixes */
         for (j = ypr.lo; j < ypr.hi; ++j) {
@@ -1078,7 +1078,7 @@ static void scale_image_data_weighted(scale_context* sctx, Gif_Image* gfo,
         const scale_color* iscr = &sctx->iscr.data[sctx->iscr.width * yi];
         scale_color* oscr = &kcx[gfo->width * yi];
         for (xo = 0; xo != gfo->width; ++xo)
-            sc_clear(&oscr[xo]);
+            KA_Clear(oscr[xo]);
         for (w = ww; w->opos < gfo->left + gfo->width; ++w)
             SCVEC_ADDVxF(oscr[w->opos - gfo->left], iscr[w->ipos], w->w);
     }
@@ -1088,7 +1088,7 @@ static void scale_image_data_weighted(scale_context* sctx, Gif_Image* gfo,
         /* skip */;
     for (yo = 0; yo != gfo->height; ++yo) {
         for (xo = 0; xo != gfo->width; ++xo)
-            sc_clear(&sc[xo]);
+            KA_Clear(sc[xo]);
         for (; w->opos < gfo->top + yo + 1; ++w) {
             const scale_color* iscr = &kcx[gfo->width * w->ipos];
             assert(w->ipos >= yi0 && w->ipos < yi1);

@@ -40,6 +40,7 @@ int thread_count = 0;
 static int gif_read_flags = 0;
 static int nextfile = 0;
 Gif_CompressInfo gif_write_info;
+Gif_ColorTransform quantz_tabs;
 
 static int frames_done = 0;
 static int files_given = 0;
@@ -907,20 +908,14 @@ set_new_fixed_colormap(const char *name)
 static void
 do_colormap_change(Gif_Stream *gfs)
 {
-  Gif_ColorTransform dp;
-  Gif_InitColorTransform(&dp);
-  Gif_SetDitherPlan(&dp,
+  Gif_SetDitherPlan(&quantz_tabs,
       active_output_data.dither_type,
       active_output_data.dither_data[0],
       active_output_data.dither_data[1],
       active_output_data.dither_data[2]);
 
-  if (active_output_data.colormap_fixed || active_output_data.colormap_size > 0)
-    kc_set_gamma(active_output_data.colormap_gamma_type,
-                 active_output_data.colormap_gamma);
-
   if (active_output_data.colormap_fixed)
-      Gif_FullQuantizeColors(gfs, active_output_data.colormap_fixed, &dp);
+      Gif_FullQuantizeColors(gfs, active_output_data.colormap_fixed, &quantz_tabs, &gif_write_info);
 
   if (active_output_data.colormap_size > 0) {
 
@@ -934,18 +929,17 @@ do_colormap_change(Gif_Stream *gfs)
       fatal_error("adaptive palette size must be between 2 and 256");
 
     if (cm_alg != CD_Flat && cm_alg != CD_Blend && cm_alg != CD_MedianCut) {
-        Gif_FreeColorTransform(&dp);
+        Gif_FreeColorTransform(&quantz_tabs);
         fatal_error("wrong colormap algorithm");
     }
-    new_cm = Gif_NewDiverseColormap(gfs, cm_alg, &ncols, &dp);
+    new_cm = Gif_NewDiverseColormap(gfs, cm_alg, &ncols, &quantz_tabs);
 
     if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
       warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
     if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_colors)
-      Gif_FullQuantizeColors(gfs, new_cm, &dp);
+      Gif_FullQuantizeColors(gfs, new_cm, &quantz_tabs, &gif_write_info);
     Gif_DeleteColormap(new_cm);
   }
-  Gif_FreeColorTransform(&dp);
 }
 
 
@@ -1021,6 +1015,12 @@ merge_and_write_frames(const char *outfile, int f1, int f2)
       w = active_output_data.resize_width;
       h = active_output_data.resize_height;
     }
+    Gif_InitColorTransform(&quantz_tabs);
+
+    if (active_output_data.colormap_fixed || active_output_data.colormap_size > 0)
+      Gif_SetGamma(&quantz_tabs, active_output_data.colormap_gamma_type,
+                        active_output_data.colormap_gamma);
+
     if (active_output_data.scaling != GT_SCALING_NONE)
       resize_stream(out, w, h, active_output_data.resize_flags,
                     active_output_data.scale_method,
@@ -1033,6 +1033,7 @@ merge_and_write_frames(const char *outfile, int f1, int f2)
       Gif_FullOptimizeFragments(out, active_output_data.optimizing, huge_stream, &gif_write_info);
     write_stream(outfile, out);
     Gif_DeleteStream(out);
+    Gif_FreeColorTransform(&quantz_tabs);
   }
 
   if (verbosing)
@@ -2018,15 +2019,16 @@ main(int argc, char *argv[])
       char* ends;
       MARK_CH(output, CH_GAMMA);
       if (clp->negated) {
-        def_output_data.colormap_gamma_type = KC_GAMMA_NUMERIC;
+        def_output_data.colormap_gamma_type = GK_Numeric;
         def_output_data.colormap_gamma = 1;
       } else if (strcmp(clp->val.s, "sRGB") == 0
                  || strcmp(clp->val.s, "srgb") == 0)
-        def_output_data.colormap_gamma_type = KC_GAMMA_SRGB;
+        def_output_data.colormap_gamma_type = GK_SRGB;
       else {
         double gamma = strtod(clp->val.s, &ends);
+        printf("%lf\n", gamma);
         if (*clp->val.s && !*ends && !isspace((unsigned char) *clp->val.s)) {
-          def_output_data.colormap_gamma_type = KC_GAMMA_NUMERIC;
+          def_output_data.colormap_gamma_type = GK_Numeric;
           def_output_data.colormap_gamma = gamma;
         } else
           Clp_OptionError(clp, "%O should be a number or %<srgb%>");

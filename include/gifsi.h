@@ -360,7 +360,7 @@ enum Gif_CDiversity {
 };
 
 Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_CDiversity, unsigned *ncol, Gif_ColorTransform *);
-void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *);
+void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *, Gif_CompressInfo *);
 
 
 /** READING AND WRITING **/

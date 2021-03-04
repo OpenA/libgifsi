@@ -260,15 +260,9 @@ void    resize_stream(Gif_Stream* gfs, double new_width, double new_height,
 /*****
  * quantization
  **/
+extern Gif_ColorTransform quantz_tabs;
 
-/* gamma_tables[0]: array of 256 gamma-conversion values
-   gamma_tables[1]: array of 256 reverse gamma-conversion values */
-extern unsigned short* gamma_tables[2];
-
-#define KC_GAMMA_SRGB                   0
-#define KC_GAMMA_NUMERIC                1
-void    kc_set_gamma(int type, double gamma);
-int     set_dither_type(Gt_OutputData* od, const char* name);
+int set_dither_type(Gt_OutputData* od, const char* name);
 
 /*****
  * parsing stuff

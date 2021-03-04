@@ -391,7 +391,7 @@ static void kcscreen_init(kcscreen* kcs, Gif_Stream* gfs, int sw, int sh) {
     kcs->data = Gif_NewArray(kacolor, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcs->bg.k = kc_Make8g(gfs->global->col[gfs->background], gamma_tables[0]);
+        kcs->bg.k = kc_Make8g(gfs->global->col[gfs->background], &quantz_tabs);
         kcs->bg.a[3] = KC_MAX;
     } else
         kcs->bg.a[0] = kcs->bg.a[1] = kcs->bg.a[2] = kcs->bg.a[3] = 0;
@@ -477,7 +477,7 @@ static void ksscreen_init(ksscreen* kss, Gif_Stream* gfs, int sw, int sh) {
     kss->data = Gif_NewArray(scale_color, sz);
     if ((gfs->nimages == 0 || gfs->images[0]->transparent < 0)
         && gfs->global && gfs->background < gfs->global->ncol) {
-        kcolor k = kc_Make8g(gfs->global->col[gfs->background], gamma_tables[0]);
+        kcolor k = kc_Make8g(gfs->global->col[gfs->background], &quantz_tabs);
         kss->bg = sc_MakeKC(k);
     } else
         KA_Clear(kss->bg);
@@ -633,14 +633,14 @@ static void scale_image_update_global_kd3(scale_context* sctx) {
     Gif_Colormap* gfcm = sctx->gfs->global;
     assert(sctx->kd3 == &sctx->global_kd3);
     while (sctx->kd3->nitems < gfcm->ncol) {
-        kd3_add8g(sctx->kd3, gfcm->col[sctx->kd3->nitems]);
+        kd3_add8g(sctx->kd3, gfcm->col[sctx->kd3->nitems], &quantz_tabs);
     }
 }
 
 static void scale_image_prepare(scale_context* sctx) {
     if (sctx->gfi->local) {
         sctx->kd3 = &sctx->local_kd3;
-        kd3_init_build(sctx->kd3, NULL, sctx->gfi->local);
+        kd3_init_build(sctx->kd3, NULL, sctx->gfi->local, &quantz_tabs);
     } else {
         sctx->kd3 = &sctx->global_kd3;
         if (!sctx->kd3->ks)
@@ -706,7 +706,7 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
                 kchist_add(&kch, xscr[xo].k, 1);
     }
     for (i = 0; i != gfcm->ncol; ++i)
-        kchist_add(&kch, kc_Make8g(gfcm->col[i], gamma_tables[0]), UINT32_MAX);
+        kchist_add(&kch, kc_Make8g(gfcm->col[i], &quantz_tabs), UINT32_MAX);
     kchist_compress(&kch);
 
     kcdiversity_init(&div, &kch, 0);
@@ -720,9 +720,9 @@ static int scale_image_add_colors(scale_context* sctx, Gif_Image* gfo) {
         if (chosen >= kch.n || div.min_dist[chosen] <= sctx->max_desired_dist)
             break;
         kcdiversity_choose(&div, chosen, 0);
-        gfc = kc_MakeGRTColor(kch.h[chosen].ka.k);
+        gfc = kc_MColR8g(kch.h[chosen].ka.k, &quantz_tabs);
         Gif_AddColor(gfcm, gfc);
-        kd3_add8g(sctx->kd3, gfc);
+        kd3_add8g(sctx->kd3, gfc, &quantz_tabs);
         ++nadded;
     }
 

@@ -34,17 +34,32 @@ typedef struct kcolor {
 #define KC_Set8g(gmt,r,g,b) { .a = {gmt[r], gmt[g], gmt[b]} }
 
 /* return kcolor gamma transformation of `gcl` */
-static inline kcolor kc_Make8g(Gif_Color gcl, const unsigned short *gammaT)
+static inline kcolor kc_Make8g(const Gif_Color gcl, const Gif_ColorTransform *cot)
 {
-	kcolor kc = KC_Set8g(gammaT, gcl.R, gcl.G, gcl.B);
+	kcolor kc = KC_Set8g(cot->GammaTab, gcl.R, gcl.G, gcl.B);
 	return kc;
 }
 
-/* return a hex color string definition for `x` */
-const char* kc_debug_str(kcolor x);
+/* return reverse gamma transformation of `a` */
+static inline unsigned char kc_revgamma_transform(const short a, const Gif_ColorTransform *cot)
+{
+	unsigned short c = cot->RGammaTab[a >> 7];
+	while (c < 0x7F80 && a >= cot->GammaTab[(c + 0x80) >> 7])
+		c += 0x80;
+	return c >> 7;
+}
 
-/* return the gramma reverse transformation Color */
-Gif_Color kc_MakeGRTColor(const kcolor);
+/* return reverse gamma transformation `gcl` */
+static inline Gif_Color kc_MColR8g(const kcolor k, const Gif_ColorTransform *cot)
+{
+	Gif_Color gcl = {
+		.haspixel = 0,
+		.R = kc_revgamma_transform(k.a[0], cot),
+		.G = kc_revgamma_transform(k.a[1], cot),
+		.B = kc_revgamma_transform(k.a[2], cot)
+	};
+	return gcl;
+};
 
 /* return the squared Euclidean distance between `*x` and `*y` */
 static inline unsigned kc_distance(const kcolor* x, const kcolor* y) {
@@ -120,7 +135,14 @@ void kd3_add_transformed(kd3_tree* kd3, const kcolor* k);
 
 /* given 8-bit color `a0/a1/a2` (RGB), gamma-transform it, transform it
    by `kd3->transform` if necessary, and add it to `*kd3` */
-void kd3_add8g(kd3_tree *, const Gif_Color);
+static inline void kd3_add8g(kd3_tree *kd3, const Gif_Color gfc, const Gif_ColorTransform *cot)
+{
+	kcolor k = KC_Set8g(cot->GammaTab, gfc.R, gfc.G, gfc.B);
+
+	if (kd3->transform)
+		kd3->transform(&k);
+	kd3_add_transformed(kd3, &k);
+}
 
 /* set `kd3->xradius`. given color `i`, `kd3->xradius[i]` is the square of the
    color's uniquely owned neighborhood.
@@ -133,7 +155,7 @@ void kd3_build(kd3_tree* kd3);
 
 /* kd3_init + kd3_add8g for all colors in `gfcm` + kd3_build */
 void kd3_init_build(kd3_tree* kd3, void (*transform)(kcolor*),
-                    const Gif_Colormap* gfcm);
+                    const Gif_Colormap* gfcm, const Gif_ColorTransform *cot);
 
 /* return the index of the color in `*kd3` closest to `k`.
    if `dist!=NULL`, store the distance from `k` to that index in `*dist`. */
@@ -143,9 +165,9 @@ int kd3_closest_transformed(kd3_tree* kd3, const kcolor* k,
 /* given 8-bit color `a0/a1/a2` (RGB), gamma-transform it, transform it by
    `kd3->transform` if necessary, and return the index of the color in
    `*kd3` closest to it. */
-static inline int kd3_closest8g(kd3_tree *kd3, Gif_Color gcl, const unsigned short *gammaT)
+static inline int kd3_closest8g(kd3_tree *kd3, const Gif_Color gcl, const Gif_ColorTransform *cot)
 {
-	kcolor k = KC_Set8g(gammaT, gcl.R, gcl.G, gcl.B);
+	kcolor k = KC_Set8g(cot->GammaTab, gcl.R, gcl.G, gcl.B);
 
 	if (kd3->transform)
 		kd3->transform(&k);

@@ -1208,18 +1208,17 @@ typedef struct halftone_pixelinfo {
 	double distance, angle;
 } halftone_pixelinfo;
 
-static halftone_pixelinfo *halftone_pixel_make(int w, int h)
+static void halftone_pixel_init(halftone_pixelinfo *hp, unsigned char w, unsigned char h)
 {
-	int x, y, k;
-	halftone_pixelinfo *hp = Gif_NewArray(halftone_pixelinfo, w * h);
-	for (y = k = 0; y < h; y++) {
+	unsigned char x, y;
+	unsigned int  k;
+	for (k = y = 0; y < h; y++) {
 		for (x = 0; x < w; x++, k++) {
 			hp[k].x = x;
 			hp[k].y = y;
 			hp[k].distance = -1;
 		}
 	}
-	return hp;
 }
 
 static void halftone_pixel_combine(halftone_pixelinfo *hp, double cx, double cy)
@@ -1233,61 +1232,49 @@ static void halftone_pixel_combine(halftone_pixelinfo *hp, double cx, double cy)
 	}
 }
 
-static int halftone_pixel_compare(const void *va, const void *vb)
+static int halftone_pixel_cmp(const halftone_pixelinfo *a, const halftone_pixelinfo *b, void *_)
 {
-	const halftone_pixelinfo *a = (const halftone_pixelinfo *)va;
-	const halftone_pixelinfo *b = (const halftone_pixelinfo *)vb;
 	if (fabs(a->distance - b->distance) > 0.01)
 		return a->distance < b->distance ? -1 : 1;
 	else
 		return a->angle < b->angle ? -1 : 1;
 }
 
-static unsigned char *halftone_pixel_matrix(halftone_pixelinfo *hp, int w, int h, int nc)
-{
-	int i;
-	unsigned count = w * h;
-	unsigned char *m = Gif_NewArray(unsigned char, 4 + count);
-	m[0] = w;
-	m[1] = h;
-	m[3] = nc;
-	if (count > 255) {
-		double s = 255. / count;
-		m[2] = 255;
-		for (i = 0; i < count; i++)
-			m[4 + hp[i].x + hp[i].y * w] = (int)(i * s);
-	} else {
-		m[2] = count;
-		for (i = 0; i < count; i++)
-			m[4 + hp[i].x + hp[i].y * w] = i;
-	}
-	Gif_DeleteArray(hp);
-	return m;
-}
+static unsigned char *make_halftone_matrix(bool _triangle_, 
+	unsigned char w,
+	unsigned char h,
+	unsigned int ncol
+) {
+	unsigned i, k, size   = (unsigned)w * (unsigned)h;
+	unsigned char *matrix = Gif_NewArray(unsigned char, 4 + size);
 
-static unsigned char *make_halftone_matrix_square(int w, int h, int nc)
-{
-	halftone_pixelinfo *hp = halftone_pixel_make(w, h);
-	int i, size = w * h;
-	for (i = 0; i < size; i++)
-		halftone_pixel_combine(&hp[i], (w - 1) / 2.0, (h - 1) / 2.0);
-	qsort(hp, size, sizeof(*hp), halftone_pixel_compare);
-	return halftone_pixel_matrix(hp, w, h, nc);
-}
+	halftone_pixelinfo hp[size];
+	halftone_pixel_init(hp, w, h);
 
-static unsigned char *make_halftone_matrix_triangular(int w, int h, int nc)
-{
-	halftone_pixelinfo *hp = halftone_pixel_make(w, h);
-	int i, size = w * h;
-	for (i = 0; i < size; i++) {
-		halftone_pixel_combine(&hp[i],(w - 1) / 2.0, (h - 1) / 2.0);
-		halftone_pixel_combine(&hp[i],    -0.5,    -0.5);
-		halftone_pixel_combine(&hp[i], w - 0.5,    -0.5);
-		halftone_pixel_combine(&hp[i],    -0.5, h - 0.5);
-		halftone_pixel_combine(&hp[i], w - 0.5, h - 0.5);
+	if (_triangle_) {
+		for (i = 0; i < size; i++) {
+			halftone_pixel_combine(&hp[i],(w - 1) / 2.0, (h - 1) / 2.0);
+			halftone_pixel_combine(&hp[i],    -0.5,    -0.5);
+			halftone_pixel_combine(&hp[i], w - 0.5,    -0.5);
+			halftone_pixel_combine(&hp[i],    -0.5, h - 0.5);
+			halftone_pixel_combine(&hp[i], w - 0.5, h - 0.5);
+		}
+	} else { /* _square_ */
+		for (i = 0; i < size; i++)
+			halftone_pixel_combine(&hp[i],(w - 1) / 2.0, (h - 1) / 2.0);
 	}
-	qsort(hp, size, sizeof(*hp), halftone_pixel_compare);
-	return halftone_pixel_matrix(hp, w, h, nc);
+	qSortPerm(halftone_pixelinfo, hp, size, halftone_pixel_cmp, NULL);
+
+	matrix[0] = w;
+	matrix[1] = h;
+	matrix[2] = _MIN(size, 255);
+	matrix[3] = ncol;
+	double _s = size > 255 ? (255. / size) : 1;
+
+	for (k = i = 0; i < size; i++, k += _s)
+		matrix[4 + hp[i].x + hp[i].y * w] = k;
+
+	return matrix;
 }
 
 
@@ -1324,10 +1311,10 @@ void Gif_SetDitherPlan(
 		cot->dpMatrix = make_floydstein_matrix_rand(w * h + ncol);
 	} else
 	if (plan == DiP_SquareHalftone) {
-		cot->dpMatrix = make_halftone_matrix_square(w, h, ncol);
+		cot->dpMatrix = make_halftone_matrix(false, w, h, ncol);
 	} else
 	if (plan == DiP_TriangleHalftone) {
-		cot->dpMatrix = make_halftone_matrix_triangular(w, h, ncol);
+		cot->dpMatrix = make_halftone_matrix(true, w, h, ncol);
 	} else {
 		const unsigned size = (
 			plan == DiP_3x3_Ordered     ? DiMx_3X3_SIZE :

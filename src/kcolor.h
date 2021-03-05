@@ -112,6 +112,9 @@ typedef struct wkcolor {
 typedef struct kd3_tree kd3_tree;
 typedef struct kd3_treepos kd3_treepos;
 
+struct kd3_treepos {
+	int offset, pivot;
+};
 struct kd3_tree {
 	kd3_treepos* tree;
 	int ntree;

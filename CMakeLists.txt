@@ -69,6 +69,7 @@ add_library(libgifsi ${gifsi_library_type}
   src/gifwrite.c
   src/optimize.c
   src/quantize.c
+  src/kcolor.c
   src/unipart.c
 )
 set_target_properties(libgifsi PROPERTIES

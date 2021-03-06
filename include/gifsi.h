@@ -203,7 +203,7 @@ Gif_CompressInfo * Gif_NewCompressInfo(void);
 #define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,NULL)
 
 int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, void *);
-int  Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
+void Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
 void Gif_InitCompressInfo                                     (Gif_CompressInfo *);
 
 

@@ -39,20 +39,20 @@
 #define LINKS_TYPE      1
 #define MAX_LINKS_TYPE  5
 
-typedef unsigned short Gif_Code;
+typedef unsigned char  PixB_t;
+typedef unsigned short Code_t;
+typedef struct  Node_t Node_t;
 
-typedef struct Gif_Node {
-	Gif_Code code;
-	unsigned char type, suffix;
-	struct Gif_Node *sibling;
-	union {
-		struct Gif_Node  *s;
-		struct Gif_Node **m;
-	} child;
-} Gif_Node;
+struct Node_t {
+	Code_t  code;
+	Node_t *sibling;
+	PixB_t  suffix, type;
+	union { Node_t *s, **m; } child;
+};
 
 typedef struct Gif_CodeTable {
-	Gif_Node *nodes, **links;
+	Node_t nodes[WRITE_CODE_MAX],
+	     * links[WRITE_CODE_MAX];
 	int links_pos, nodes_pos, clear_code;
 } Gif_CodeTable;
 
@@ -68,7 +68,6 @@ typedef struct Gif_Writer {
 
 	short errors;
 
-	Gif_CodeTable code_table;
 	Gif_CompressInfo gcinfo;
 
 	void (*Write_byte )(struct Gif_Writer*, const unsigned char );
@@ -138,47 +137,35 @@ init_writer(Gif_Writer *gwr, FILE *f, const Gif_CompressInfo *gcinfo)
 
 	gwr->Write_byte  = f ? write_file_byte  : write_data_byte;
 	gwr->Write_chunk = f ? write_file_chunk : write_data_chunk;
-
-	gwr->code_table.nodes = Gif_NewArray(Gif_Node , WRITE_CODE_MAX);
-	gwr->code_table.links = Gif_NewArray(Gif_Node*, WRITE_CODE_MAX);
 }
 
 static void
-gif_writer_cleanup(Gif_Writer* grr)
-{
-	Gif_DeleteArray(grr->code_table.nodes);
-	Gif_DeleteArray(grr->code_table.links);
-}
-
-
-static inline void
-gfc_clear(Gif_CodeTable *gfc, Gif_Code clear_code)
+clear_code_table(Gif_CodeTable *c_tab, const Code_t clear_code)
 {
 	/* The first clear_code nodes are reserved for single-pixel codes */
-	gfc->nodes_pos  = clear_code;
-	gfc->links_pos  = 0;
-	for (Gif_Code c = 0; c < clear_code; c++) {
-		gfc->nodes[c].code    = c;
-		gfc->nodes[c].type    = LINKS_TYPE;
-		gfc->nodes[c].suffix  = c;
-		gfc->nodes[c].child.s = 0;
+	c_tab->nodes_pos = c_tab->clear_code = clear_code;
+	c_tab->links_pos = 0;
+	for (Code_t c = 0; c < clear_code; c++) {
+		c_tab->nodes[c].code    = c;
+		c_tab->nodes[c].type    = LINKS_TYPE;
+		c_tab->nodes[c].suffix  = c;
+		c_tab->nodes[c].child.s = NULL;
 	}
-	gfc->clear_code = clear_code;
 }
 
-static inline Gif_Node *
-gfc_lookup(Gif_CodeTable *gfc, Gif_Node *node, unsigned char suffix)
+static inline Node_t *
+gfc_lookup(Gif_CodeTable *c_tab, Node_t *node, unsigned char suffix)
 {
-	assert(!node || (node >= gfc->nodes && node < gfc->nodes + WRITE_CODE_MAX));
-	assert(suffix < gfc->clear_code);
+	assert(!node || (node >= c_tab->nodes && node < c_tab->nodes + WRITE_CODE_MAX));
+	assert(suffix < c_tab->clear_code);
 	if (!node)
-		return &gfc->nodes[suffix];
+		return &c_tab->nodes[suffix];
 	else if (node->type == TABLE_TYPE)
 		return node->child.m[suffix];
 	else {
 		for (node = node->child.s; node; node = node->sibling)
-		if (node->suffix == suffix)
-			return node;
+			if (node->suffix == suffix)
+				return node;
 		return NULL;
 	}
 }
@@ -228,16 +215,15 @@ static inline gfc_rgbdiff diffused_difference(Gif_Color aCol, Gif_Color bCol, in
 static inline unsigned char gif_pixel_at_pos(Gif_Image *gfi, unsigned pos);
 
 static void
-gfc_change_node_to_table(Gif_CodeTable *gfc, Gif_Node *work_node,
-                         Gif_Node *next_node)
+gfc_change_node_to_table(Gif_CodeTable *c_tab, Node_t *work_node, Node_t *next_node)
 {
 	/* change links node to table node */
-	Gif_Code c;
-	Gif_Node **table = &gfc->links[gfc->links_pos];
-	Gif_Node *n;
-	gfc->links_pos += gfc->clear_code;
+	Code_t c;
+	Node_t **table = &c_tab->links[c_tab->links_pos];
+	Node_t *n;
+	c_tab->links_pos += c_tab->clear_code;
 
-	for (c = 0; c < gfc->clear_code; c++)
+	for (c = 0; c < c_tab->clear_code; c++)
 		table[c] = 0;
 	table[next_node->suffix] = next_node;
 	for (n = work_node->child.s; n; n = n->sibling)
@@ -248,28 +234,27 @@ gfc_change_node_to_table(Gif_CodeTable *gfc, Gif_Node *work_node,
 }
 
 static inline void
-gfc_define(Gif_CodeTable *gfc, Gif_Node *work_node, unsigned char suffix,
-           Gif_Code next_code)
+define_code_table(Gif_CodeTable *c_tab, Node_t *work_node, PixB_t suffix, Code_t next_code)
 {
 	/* Add a new code to our dictionary. First reserve a node for the
 		added code. It's LINKS_TYPE at first. */
-	Gif_Node *next_node = &gfc->nodes[gfc->nodes_pos++];
+	Node_t *next_node = &c_tab->nodes[c_tab->nodes_pos++];
 	next_node->code = next_code;
 	next_node->type = LINKS_TYPE;
 	next_node->suffix = suffix;
-	next_node->child.s = 0;
+	next_node->child.s = NULL;
 
 	/* link next_node into work_node's set of children */
 	if (work_node->type == TABLE_TYPE)
 		work_node->child.m[suffix] = next_node;
 	else if (work_node->type < MAX_LINKS_TYPE
-			|| gfc->links_pos + gfc->clear_code > WRITE_CODE_MAX) {
+			|| c_tab->links_pos + c_tab->clear_code > WRITE_CODE_MAX) {
 		next_node->sibling = work_node->child.s;
 		work_node->child.s = next_node;
 		if (work_node->type < MAX_LINKS_TYPE)
 			work_node->type++;
 	} else
-		gfc_change_node_to_table(gfc, work_node, next_node);
+		gfc_change_node_to_table(c_tab, work_node, next_node);
 }
 
 static inline const unsigned char *
@@ -296,14 +281,14 @@ gif_line_endpos(Gif_Image *gfi, unsigned pos)
 }
 
 struct selected_node {
-	Gif_Node *node; /* which node has been chosen by gfc_lookup_lossy */
+	Node_t *node; /* which node has been chosen by gfc_lookup_lossy */
 	unsigned long pos, /* where the node ends */
 	diff; /* what is the overall quality loss for that node */
 };
 
 static inline void
 gfc_lookup_lossy_try_node(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Image *gfi,
-  unsigned pos, Gif_Node *node, unsigned char suffix, unsigned char next_suffix,
+  unsigned pos, Node_t *node, PixB_t suffix, PixB_t next_suffix,
   gfc_rgbdiff dither, unsigned long base_diff, const unsigned int max_diff, struct selected_node *best_t);
 
 /* Recursive loop
@@ -311,12 +296,12 @@ gfc_lookup_lossy_try_node(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Imag
  * base_diff and dither are distortion from search made so far */
 static struct selected_node
 gfc_lookup_lossy(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Image *gfi,
-  unsigned pos, Gif_Node *node, unsigned long base_diff, gfc_rgbdiff dither, const unsigned int max_diff)
+  unsigned pos, Node_t *node, unsigned long base_diff, gfc_rgbdiff dither, const unsigned int max_diff)
 {
 	const unsigned image_endpos = gfi->width * gfi->height;
 
 	struct selected_node best_t = {node, pos, base_diff};
-	unsigned char suffix;
+	PixB_t suffix;
 	if (pos >= image_endpos) return best_t;
 
 	suffix = gif_pixel_at_pos(gfi, pos);
@@ -357,7 +342,7 @@ gfc_lookup_lossy(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Image *gfi,
  */
 static inline void
 gfc_lookup_lossy_try_node(Gif_CodeTable *gfc, const Gif_Colormap *gfcm, Gif_Image *gfi,
-  unsigned pos, Gif_Node *node, unsigned char suffix, unsigned char next_suffix,
+  unsigned pos, Node_t *node, PixB_t suffix, PixB_t next_suffix,
   gfc_rgbdiff dither, unsigned long base_diff, const unsigned int max_diff, struct selected_node *best_t)
 {
 	unsigned diff = 0;
@@ -389,7 +374,6 @@ static int
 write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
                       int min_code_bits, Gif_Writer *grr)
 {
-	Gif_CodeTable* gfc = &grr->code_table;
 	unsigned char stack_buffer[512 - 24];
 	unsigned char *buf = stack_buffer;
 	unsigned bufpos = 0;
@@ -402,17 +386,22 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	const bool has_eager = grr->gcinfo.flags & GIF_WRITE_EAGER_CLEAR;
 	unsigned run = 0, run_ewma;
 
-	Gif_Node *work_node, *next_node;
-	Gif_Code  next_code = 0, output_code;
-	unsigned char suffix;
+	Node_t *work_node, *next_node;
+	Code_t  next_code = 0, output_code;
+	PixB_t suffix;
+
+	Gif_CodeTable c_tab = {
+		.links_pos = 0, .nodes_pos = 0, .clear_code = 0
+	};
+
 	Gif_Colormap *gfcm = gfi->local ? gfi->local : gfs->global;
 
 	int cur_code_bits;
 
 	/* Here we go! */
 	writeUint8(min_code_bits, grr);
-#define CLEAR_CODE      ((Gif_Code) (1 << min_code_bits))
-#define EOI_CODE        ((Gif_Code) (CLEAR_CODE + 1))
+#define CLEAR_CODE      ((Code_t) (1 << min_code_bits))
+#define EOI_CODE        ((Code_t) (CLEAR_CODE + 1))
 #define CUR_BUMP_CODE   (1 << cur_code_bits)
 	grr->is_cleared = false;
 
@@ -438,7 +427,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 
 #define _NEXT_CODE_ \
 	if (next_code < WRITE_CODE_MAX)\
-		gfc_define(gfc, work_node, suffix, next_code++);\
+		define_code_table(&c_tab, work_node, suffix, next_code++);\
 	else\
 		next_code = WRITE_CODE_MAX + 1; // to match `i > CUR_BUMP_CODE` above
 
@@ -496,7 +485,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 		next_code     = EOI_CODE + 1;
 		run_ewma      = 1 << EWMA_PAD_B;
 		clear_bufpos  = clear_pos = run = 0;
-		gfc_clear(gfc, CLEAR_CODE);
+		clear_code_table(&c_tab, CLEAR_CODE);
 	} else if (output_code == EOI_CODE) {
 		break;
 
@@ -513,7 +502,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	/* Find the next code to output. */
 	if (grr->gcinfo.lossy) {
 		gfc_rgbdiff zero_diff = {0, 0, 0};
-		struct selected_node t = gfc_lookup_lossy(gfc, gfcm, gfi, pos, NULL, 0, zero_diff, grr->gcinfo.lossy * 10);
+		struct selected_node t = gfc_lookup_lossy(&c_tab, gfcm, gfi, pos, NULL, 0, zero_diff, grr->gcinfo.lossy * 10);
 
 		work_node = t.node;
 		run = t.pos - pos;
@@ -546,7 +535,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 	     time around. */
 		while (imageline) {
 			suffix = *imageline;
-			next_node = gfc_lookup(gfc, work_node, suffix);
+			next_node = gfc_lookup(&c_tab, work_node, suffix);
 			imageline++;
 			if (++pos == line_endpos) {
 				imageline = gif_imageline(gfi, pos);
@@ -577,7 +566,7 @@ write_compressed_data(Gif_Stream *gfs, Gif_Image *gfi,
 				}
 			}
 			output_code = work_node->code;
-			work_node = &gfc->nodes[suffix];
+			work_node = &c_tab.nodes[suffix];
 			goto found_output_code;
 		}
 		/* Ran out of data if we get here. */
@@ -686,9 +675,6 @@ Gif_FullCompressImage(Gif_Stream *gfs, Gif_Image *gfi,
 		if (write_compressed_data(gfs, gfi, min_code_bits, &grr))
 			save_compression_result(gfi, &grr, 1);
 	}
-
- done:
-	gif_writer_cleanup(&grr);
 	return ok;
 }
 
@@ -983,7 +969,6 @@ unsigned int Gif_FullWriteFile(
 	if (!write_gif(gst, &gwr)) {
 		/* check errors */;
 	}
-	gif_writer_cleanup(&gwr);
 	return gwr.length;
 }
 
@@ -1000,6 +985,5 @@ unsigned int Gif_FullWriteData(
 		/* check errors */;
 	}
 	*out = gwr.data, gwr.data = NULL;
-	gif_writer_cleanup(&gwr);
 	return gwr.length;
 }

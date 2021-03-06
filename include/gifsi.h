@@ -23,9 +23,8 @@
 
 /*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
 #ifdef __cplusplus
-# define GIFSI_COMPILE_CPP
-# include <string>
-# include <vector>
+# define GIFSI_HPP
+extern "C" {
 #endif
 
 #if WITH_FILE_IO
@@ -109,10 +108,6 @@ struct Gif_Stream {
 	int loopcount, nimages; /* -1 means no loop count */
 
 	int user_flags, refcount;
-
-#ifdef GIFSI_COMPILE_CPP
-	~Gif_Stream();
-#endif
 };
 
 //  Stream init/copy/destroy
@@ -411,11 +406,24 @@ void     Gif_Debug(char *x, ...);
 #define Gif_GetNamedImage      Gif_GetImageByName
 #define Gif_ImageNumber        Gif_GetIndexOfImage
 
+#ifdef GIFSI_HPP
+# define Gif_New(_T)           new _T
+# define Gif_NewArray(_T, n)   new _T[n]
+# define Gif_Free(obj)         delete   obj
+# define Gif_FreeArray(arr)    delete[] arr
+# define Gif_ReArray(arr,_T,n) {\
+	size_t cnt = (n);\
+	_T *tmp = new _T *[cnt];\
+	memcpy(tmp, arr, sizeof(_T) * cnt);\
+	delete[] arr, arr = tmp;\
+}
+#else
 #define Gif_New(t)         (    (t*) malloc(            sizeof(t)      ))
 #define Gif_NewArray(t,n)  (    (t*) malloc(            sizeof(t) * (n)))
 #define Gif_ReArray(p,t,n) (p = (t*)realloc((void*)(p), sizeof(t) * (n)))
 #define Gif_Free(p)                    free((void*)(p))
 #define Gif_FreeArray(p)               free((void*)(p))
+#endif //GIFSI_HPP
 
 #define Gif_NewExtension(ex,k) Gif_InitExtension(ex = Gif_New(Gif_Extension),k,NULL,0)
 #define Gif_NewColormap(gcm,n) Gif_InitColormap(gcm = Gif_New(Gif_Colormap),n,256)
@@ -433,20 +441,8 @@ void     Gif_Debug(char *x, ...);
 #define Gif_DeleteStream       Gif_FreeStream
 #define Gif_DeleteImage        Gif_FreeImage
 
-#ifdef GIFSI_COMPILE_CPP
-
-# define Gif_New(_T_)           (new _T_)
-# define Gif_NewArray(_T_, res) (new std::vector<_T_>(res))
-
-namespace GifSI {
-	class Stream : public Gif_Stream {
-	  public:
-	    Stream();
-	    Stream(const Stream& other);
-	    virtual ~Stream();
-	    Stream& operator=(const Stream& other);
-	};
-} /* namespace GifSI */
-#endif //GIFSI_COMPILE_CPP
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif //GIFSI_H

@@ -53,32 +53,26 @@ typedef struct Gif_Comment    Gif_Comment;
 typedef struct Gif_Extension  Gif_Extension;
 typedef struct Gif_Error      Gif_Error;
 
-typedef enum   Gif_eModule    Gif_eModule;
-typedef enum   Gif_eLevel     Gif_eLevel;
-typedef enum   Gif_Disposal   Gif_Disposal;
-typedef enum   Gif_CDiversity Gif_CDiversity;
-typedef enum   Gif_Dither     Gif_Dither;
-typedef enum   Gif_Gamma      Gif_Gamma;
-
-typedef void (*Gif_eHandler) (Gif_Stream *, Gif_eModule, Gif_Error);
 
 
 /* - - - - - - - *
    Error object
  * - - - - - - - */
-enum Gif_eLevel {
+typedef enum {
 	GE_Log = -1,
 	GE_Warning,
 	GE_Error,
 	GE_Fatal
-};
+} Gif_eLevel;
 
-enum Gif_eModule {
+typedef enum {
 	GmE_Read       = 0xA,
 	GmE_Optimize, // 0xB
 	GmE_Quantize, // 0xC
 	GmE_Write     // 0xD
-};
+} Gif_eModule;
+
+typedef void (*Gif_eHandler)(Gif_Stream *, Gif_eModule, Gif_Error);
 
 struct Gif_Error {
 	Gif_eLevel  lvl;
@@ -146,12 +140,12 @@ bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
 
 
 //  Image class
-enum Gif_Disposal {
+typedef enum {
 	GD_None = 0,
 	GD_Asis,
 	GD_Background,
 	GD_Previous
-};
+} Gif_Disposal;
 
 struct Gif_Image {
 	unsigned char **img;     /* img[y][x] == image byte (x,y) */
@@ -328,6 +322,9 @@ enum Gif_Dither {
 	DiP_TriangleHalftone
 };
 
+typedef enum Gif_Dither Gif_Dither;
+typedef enum Gif_Gamma  Gif_Gamma;
+
 struct Gif_ColorTransform {
 
 	Gif_Dither dither_plan;
@@ -348,11 +345,11 @@ void Gif_SetDitherPlan(Gif_ColorTransform *, Gif_Dither plan, unsigned char w, u
 // sets the gamma type and range
 void Gif_SetGamma(Gif_ColorTransform *, Gif_Gamma type, double range);
 
-enum Gif_CDiversity {
+typedef enum {
 	CD_Flat = 0,
 	CD_Blend,
 	CD_MedianCut
-};
+} Gif_CDiversity;
 
 Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_CDiversity, unsigned *ncol, Gif_ColorTransform *);
 void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *, Gif_CompressInfo *);
@@ -372,15 +369,17 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap     
 bool Gif_FullReadData(Gif_Stream *, char read_flags, const unsigned char *, unsigned);
 bool Gif_FullReadFile(Gif_Stream *, char read_flags, FILE *);
 
-unsigned int Gif_FullWriteFile  (Gif_Stream *, FILE *         , Gif_CompressInfo *);
-unsigned int Gif_FullWriteData  (Gif_Stream *, unsigned char *, Gif_CompressInfo *);
+unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo *, FILE *);
+unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *, unsigned char **);
 
 #define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_UNCOMPRESSED,d,l)
 #define Gif_ReadFile(gst,f)   Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
 
 #define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
-#define Gif_WriteFile(s,f)     Gif_FullWriteFile     (s,f,NULL)
-#define Gif_WriteData(s,d)     Gif_FullWriteData     (s,d,NULL)
+
+#define Gif_WriteFile(gst,f)  Gif_FullWriteFile(gst,NULL,f)
+#define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)
+
 
 
 /** HOOKS AND MISCELLANEOUS **/

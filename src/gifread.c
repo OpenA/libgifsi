@@ -35,9 +35,9 @@ struct GReadContext {
 }
 
 typedef struct Gif_Reader {
-
+#if WITH_FILE_IO
 	FILE *file;
-
+#endif
 	const unsigned char *data;
 	unsigned pos, length;
 
@@ -58,6 +58,7 @@ typedef struct Gif_Reader {
 	read_compressed_image_data(r,i,f) : \
 	read_compressed_image_file(r,i,f))
 
+#if WITH_FILE_IO
 static void
 skip_file_bytes(Gif_Reader *grr, unsigned offset)
 {
@@ -102,6 +103,7 @@ make_file_reader(Gif_Reader *grr, FILE *file)
 	grr->Read_chunk = read_file_chunk;
 	grr->Skip_bytes = skip_file_bytes;
 }
+#endif
 
 static unsigned char
 read_data_byte(Gif_Reader *grr) {
@@ -343,7 +345,7 @@ read_image_data(struct GReadContext *gctx, Gif_Reader *grr)
 	/* zero-length block reached. */
 	zero_length_block: {
 		long delta = (long)(gctx->maximage - gctx->image) - (long)gctx->decodepos;
-		char buf[BUFSIZ];
+		char buf[READ_BUFFER_SIZE];
 		if (delta > 0) {
 			sprintf(buf, "missing %ld %s of image data", delta,
 					delta == 1 ? "pixel" : "pixels");
@@ -786,7 +788,7 @@ done:
 	return true;
 }
 
-
+#if WITH_FILE_IO
 bool Gif_FullReadFile(Gif_Stream *gst, char read_flags, FILE *file)
 {
 	Gif_Reader grr;
@@ -795,6 +797,7 @@ bool Gif_FullReadFile(Gif_Stream *gst, char read_flags, FILE *file)
 	make_file_reader(&grr, file);
 	return  read_gif(&grr, read_flags, gst);
 }
+#endif
 
 bool Gif_FullReadData(Gif_Stream *gst, char read_flags, const unsigned char *data, unsigned length)
 {
@@ -806,16 +809,3 @@ bool Gif_FullReadData(Gif_Stream *gst, char read_flags, const unsigned char *dat
 		read_flags |= GIF_READ_COMPRESSED;
 	return  read_gif(&grr, read_flags, gst);
 }
-
-#ifdef GIFSI_COMPILE_CPP
-namespace GifSI {
-# ifdef USE_FILE_IO
-	unsigned ReadFile(GifSI::Stream& stream, const std::string& filename) {
-		Gif_FullReadFile
-	}
-# endif // USE_FILE_IO
-	unsigned ReadData(GifSI::Stream& stream, const std::vector& buffer) {
-		Gif_FullReadData
-	}
-} /* namespace GifSI */
-#endif //GIFSI_COMPILE_CPP

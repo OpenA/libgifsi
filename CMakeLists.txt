@@ -178,8 +178,8 @@ unset(WITH_MULTITHREAD)
 #
 option(WITH_SIMD
   "Include SIMD extensions, if available for this platform."
-  ON
-)
+ON)
+
 if(WITH_SIMD)
   message(" SIMD extensions for ${CPU_TYPE}")
 
@@ -215,7 +215,6 @@ ${test_vec_code}" CC_TYPE_ext_vector_type)
 #define _SHUFFLE __builtin_shufflevector
 ${test_vec_code}" CC_FUNC_builtin_shufflevector)
 
-  set(HAVE_SIMD                         TRUE)
   set(HAVE_VECTOR_SIZE_VECTOR_TYPES     ${CC_TYPE_vector_size})
   set(HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES ${CC_TYPE_ext_vector_type})
   set(HAVE___BUILTIN_SHUFFLEVECTOR      ${CC_FUNC_builtin_shufflevector})
@@ -225,7 +224,13 @@ ${test_vec_code}" CC_FUNC_builtin_shufflevector)
   unset(CC_TYPE_ext_vector_type)
   unset(CC_FUNC_builtin_shufflevector)
 endif()
-unset(WITH_SIMD)
+
+#
+# Optional: -DWITH_FILE_IO=0
+#
+option(WITH_FILE_IO
+  "Enable read/write from/to File"
+ON)
 
 message("")
 

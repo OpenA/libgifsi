@@ -15,12 +15,15 @@
 #cmakedefine HAVE___SYNC_ADD_AND_FETCH 1
 
 /* Define to 1 if SIMD types should be used. */
-#cmakedefine HAVE_SIMD 1
+#cmakedefine WITH_SIMD 1
 
 /* Defined 1 if vector function/type are supported */
 #cmakedefine HAVE_VECTOR_SIZE_VECTOR_TYPES     1
 #cmakedefine HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES 1
 #cmakedefine HAVE___BUILTIN_SHUFFLEVECTOR      1
+
+/* Define to 1 if File i/o should be used. */
+#cmakedefine WITH_FILE_IO 1
 
 /* Defined 1 if you system have the listed header files. */
 #cmakedefine HAVE_SYS_TYPES_H 1 // <sys/types.h>

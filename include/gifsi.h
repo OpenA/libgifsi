@@ -13,13 +13,13 @@
 #define GIFSI_H
 
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #if HAVE_CONFIG_H
 #include <config.h>
 #endif
+
 
 /*compile the C++ version (you can disable the C++ wrapper here even when compiling for C++)*/
 #ifdef __cplusplus
@@ -28,7 +28,7 @@ extern "C" {
 #endif
 
 #if WITH_FILE_IO
-# define USE_FILE_IO
+# include <stdio.h>
 #endif
 
 #define GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL 1
@@ -365,18 +365,19 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap     
 #define GIF_WRITE_OPTIMIZE              4
 #define GIF_WRITE_SHRINK                8
 
-bool Gif_FullReadData(Gif_Stream *, char read_flags, const unsigned char *, unsigned);
-bool Gif_FullReadFile(Gif_Stream *, char read_flags, FILE *);
-
-unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo *, FILE *);
-unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *, unsigned char **);
+bool     Gif_FullReadData (Gif_Stream *, char read_flags   , const unsigned char *, unsigned);
+unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *,       unsigned char **);
 
 #define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_UNCOMPRESSED,d,l)
-#define Gif_ReadFile(gst,f)   Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
-
-#define Gif_WriteFile(gst,f)  Gif_FullWriteFile(gst,NULL,f)
 #define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)
 
+#if WITH_FILE_IO
+bool     Gif_FullReadFile (Gif_Stream *, char read_flags   , FILE *);
+unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo *, FILE *);
+
+#define Gif_ReadFile(gst,f)  Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
+#define Gif_WriteFile(gst,f) Gif_FullWriteFile(gst,NULL,f)
+#endif
 
 
 /** HOOKS AND MISCELLANEOUS **/

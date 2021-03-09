@@ -58,9 +58,9 @@ typedef struct Gif_CodeTable {
 } Gif_CodeTable;
 
 struct Gif_Writer {
-
+#if WITH_FILE_IO
 	FILE *file;
-
+#endif
 	unsigned char *data;
 	unsigned int length, cap;
 
@@ -86,6 +86,14 @@ struct Gif_Writer {
 		pos += b, len -= b;\
 	}
 
+#define SET_WriterParams(gci) {\
+	.is_cleared = false, .length = 0, .cap = 0, .errors = 0,\
+	.diff_max   = (gci && gci->lossy > 0 ? gci->lossy * 100 : 0),\
+	.has_eager  = (gci && gci->flags & GIF_WRITE_EAGER_CLEAR),\
+	.care_min   = (gci && gci->flags & GIF_WRITE_CAREFUL_MIN_CODE_SIZE)\
+}
+
+#if WITH_FILE_IO
 static void
 write_file_byte(Gif_Writer *gwr, const unsigned char b)
 {
@@ -101,6 +109,15 @@ write_file_chunk(Gif_Writer *gwr, const unsigned char *chunk, const unsigned len
 	gwr->errors += (n != len);
 	gwr->length += (n);
 }
+
+static void
+init_fileWriter(Gif_Writer *gwr, FILE *f)
+{
+	gwr->file = f;
+	gwr->Write_byte  = write_file_byte;
+	gwr->Write_chunk = write_file_chunk;
+}
+#endif
 
 static void
 write_data_byte(Gif_Writer *grr, const unsigned char c)
@@ -127,24 +144,11 @@ write_data_chunk(Gif_Writer *grr, const unsigned char *chunk, const unsigned len
 }
 
 static void
-init_writer(Gif_Writer *gwr, FILE *f, const Gif_CompressInfo *gcinfo)
+init_dataWriter(Gif_Writer *gwr)
 {
-	gwr->file = f;
-	gwr->data = NULL;
-
-	gwr->length = gwr->cap = gwr->errors = 0;
-	gwr->is_cleared = false;
-
-	if (gcinfo) {
-		gwr->diff_max  = gcinfo->lossy > 0 ? gcinfo->lossy * 100 : 0;
-		gwr->has_eager = gcinfo->flags & GIF_WRITE_EAGER_CLEAR;
-		gwr->care_min  = gcinfo->flags & GIF_WRITE_CAREFUL_MIN_CODE_SIZE;
-	} else {
-		gwr->diff_max  = 0;
-		gwr->has_eager = gwr->care_min = false;
-	}
-	gwr->Write_byte  = f ? write_file_byte  : write_data_byte;
-	gwr->Write_chunk = f ? write_file_chunk : write_data_chunk;
+	gwr->data = Gif_NewArray(unsigned char, gwr->cap = 1024);
+	gwr->Write_byte  = write_data_byte;
+	gwr->Write_chunk = write_data_chunk;
 }
 
 static void
@@ -654,14 +658,14 @@ save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool do_shrink)
 
 void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo *gcinfo)
 {
-	Gif_Writer gwr;
+	Gif_Writer gwr = SET_WriterParams(gcinfo);
 
 	unsigned char min_code_bits;
 
 	bool do_shrink = (gcinfo->flags &  GIF_WRITE_SHRINK);
 	bool do_optim  = (gcinfo->flags & (GIF_WRITE_OPTIMIZE | GIF_WRITE_EAGER_CLEAR)) == GIF_WRITE_OPTIMIZE;
 
-	init_writer(&gwr, NULL, gcinfo);
+	init_dataWriter(&gwr);
 
 	if (!do_shrink)
 		Gif_ReleaseCompressedImage(gim);
@@ -946,29 +950,32 @@ write_gif(Gif_Writer *gwr, Gif_Stream *gst)
   interface functions 
   returns => size of writing file/data
 */
+
+#if WITH_FILE_IO
 unsigned int Gif_FullWriteFile(
 	Gif_Stream       *gst,
 	Gif_CompressInfo *gcinfo,
 	FILE             *file
 ) {
-	Gif_Writer gwr;
+	Gif_Writer gwr = SET_WriterParams(gcinfo);
 
-	init_writer(&gwr, file, gcinfo);
+	init_fileWriter(&gwr, file);
 
 	if (!write_gif(&gwr, gst)) {
 		/* check errors */;
 	}
 	return gwr.length;
 }
+#endif
 
 unsigned int Gif_FullWriteData(
 	Gif_Stream       *gst,
 	Gif_CompressInfo *gcinfo,
 	unsigned char   **out
 ) {
-	Gif_Writer gwr;
+	Gif_Writer gwr = SET_WriterParams(gcinfo);
 
-	init_writer(&gwr, NULL, gcinfo);
+	init_dataWriter(&gwr);
 
 	if (!write_gif(&gwr, gst)) {
 		/* check errors */;

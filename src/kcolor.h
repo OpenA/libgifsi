@@ -225,10 +225,10 @@ int  kcdiversity_find_diverse( kcdiversity *, double );
 int  kcdiversity_choose      ( kcdiversity *, int, int );
 
 
-#if HAVE_SIMD && HAVE_VECTOR_SIZE_VECTOR_TYPES
+#if WITH_SIMD && HAVE_VECTOR_SIZE_VECTOR_TYPES
 typedef float float4 __attribute__((vector_size (sizeof(float) * 4)));
 typedef int     int4 __attribute__((vector_size (sizeof(int  ) * 4)));
-#elif HAVE_SIMD && HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES
+#elif WITH_SIMD && HAVE_EXT_VECTOR_TYPE_VECTOR_TYPES
 typedef float float4 __attribute__((ext_vector_type (4)));
 #else
 typedef float float4[4];
@@ -243,7 +243,7 @@ static inline scale_color sc_MakeKC(const kcolor k) {
 	return sc;
 }
 
-#if HAVE_SIMD
+#if WITH_SIMD
 # define SCVEC_ADDV(  sc, sc2   ) (sc).a += (sc2).a
 # define SCVEC_MULV(  sc, sc2   ) (sc).a *= (sc2).a
 # define SCVEC_MULF(  sc,      f) (sc).a *= (f)

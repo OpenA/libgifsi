@@ -378,8 +378,10 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 	/* Colormap containing all colors in the image. May have >256 colors */
 	Gif_Colormap *complex_cm = init_colormaps(gfs, &bg_color);
 
-	if (!gcinfo)
-		 gcinfo = Gif_NewCompressInfo();
+	if (!gcinfo) {
+		gcinfo = Gif_New(Gif_CompressInfo);
+		gcinfo->flags = gcinfo->lossy = 0;
+	}
 
 	int opt_lvl = optimize_flags & GIF_OPT_MASK;
 	if (opt_lvl >= 3)

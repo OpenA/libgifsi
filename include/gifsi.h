@@ -195,16 +195,15 @@ void Gif_MakeImageEmpty          (Gif_Image *);
 
 
 typedef struct {
-	int flags, lossy;
+	short flags; // write and opt flags
+	float lossy; // range 0-655.35 equals 100-0% quality
 } Gif_CompressInfo;
 
-Gif_CompressInfo * Gif_NewCompressInfo(void);
+#define Gif_UncompressImage(gst,gim) Gif_FullUncompressImage(gst, gim, 0)
+#define Gif_CompressImage(gst,gim)   Gif_FullCompressImage(gst, gim, NULL)
 
-#define Gif_UncompressImage(gfs,gfi) Gif_FullUncompressImage(gfs,gfi,NULL)
-
-int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, void *);
-void Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, const Gif_CompressInfo *);
-void Gif_InitCompressInfo                                     (Gif_CompressInfo *);
+int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, char read_flags);
+void Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, Gif_CompressInfo *);
 
 
 //  Color object
@@ -374,8 +373,6 @@ unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *, unsigned char **);
 
 #define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_UNCOMPRESSED,d,l)
 #define Gif_ReadFile(gst,f)   Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
-
-#define Gif_CompressImage(s,i) Gif_FullCompressImage (s,i,NULL)
 
 #define Gif_WriteFile(gst,f)  Gif_FullWriteFile(gst,NULL,f)
 #define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)

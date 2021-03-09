@@ -269,7 +269,7 @@ const Clp_Option options[] = {
 
   { "logical-screen", 'S', LOGICAL_SCREEN_OPT, DIMENSIONS_TYPE, Clp_Negate },
   { "loopcount", 'l', 'l', LOOP_TYPE, Clp_Optional | Clp_Negate },
-  { "lossy", 0, LOSSY_OPT, Clp_ValInt, Clp_Optional },
+  { "lossy", 0, LOSSY_OPT, Clp_ValDouble, Clp_Optional },
 
   { "merge", 'm', 'm', 0, 0 },
   { "method", 0, COLORMAP_ALGORITHM_OPT, COLORMAP_ALG_TYPE, 0 },
@@ -1562,7 +1562,6 @@ main(int argc, char *argv[])
 
   frames = new_frameset(16);
   initialize_def_frame();
-  Gif_InitCompressInfo(&gif_write_info);
 
   /* Yep, I'm an idiot.
      GIF dimensions are unsigned 16-bit integers. I assume that these
@@ -2124,10 +2123,7 @@ main(int argc, char *argv[])
       break;
 
     case LOSSY_OPT:
-      if (clp->have_val)
-        gif_write_info.lossy = clp->val.i;
-      else
-        gif_write_info.lossy = 20;
+      gif_write_info.lossy = clp->have_val ? clp->val.d : 1;
       break;
 
       /* RANDOM OPTIONS */

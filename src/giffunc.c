@@ -335,23 +335,6 @@ bool Gif_CopyExtension(Gif_Extension *dest, const Gif_Extension *src, char no_co
 
 
 
-/*
-  CompressInfo constructor functions & methods
-*/
-Gif_CompressInfo *
-Gif_NewCompressInfo(void) {
-	Gif_CompressInfo *gcinfo = Gif_New(Gif_CompressInfo);
-	if (gcinfo != NULL)
-		Gif_InitCompressInfo(gcinfo);
-	return gcinfo;
-}
-
-void Gif_InitCompressInfo(Gif_CompressInfo *gcinfo)
-{
-	gcinfo->flags = gcinfo->lossy = 0;
-}
-
-
 /* MISC FUNCTIONS */
 char *Gif_CopyString(const char *str)
 {

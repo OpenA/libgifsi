@@ -472,7 +472,7 @@ uncompress_image(struct GReadContext *gctx, Gif_Image *gfi, Gif_Reader *grr)
 }
 
 
-int Gif_FullUncompressImage(Gif_Stream *gst, Gif_Image *gfi, void *_)
+int Gif_FullUncompressImage(Gif_Stream *gst, Gif_Image *gfi, char read_flags)
 {
 	struct GReadContext gctx = GRCTX_DEFS(gst);
 	Gif_Reader grr;

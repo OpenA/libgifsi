@@ -126,7 +126,6 @@ write_data_chunk(Gif_Writer *grr, const unsigned char *chunk, const unsigned len
 	}
 }
 
-
 static void
 init_writer(Gif_Writer *gwr, FILE *f, const Gif_CompressInfo *gcinfo)
 {
@@ -137,7 +136,7 @@ init_writer(Gif_Writer *gwr, FILE *f, const Gif_CompressInfo *gcinfo)
 	gwr->is_cleared = false;
 
 	if (gcinfo) {
-		gwr->diff_max  = gcinfo->lossy ? gcinfo->lossy * 10 : 0;
+		gwr->diff_max  = gcinfo->lossy > 0 ? gcinfo->lossy * 100 : 0;
 		gwr->has_eager = gcinfo->flags & GIF_WRITE_EAGER_CLEAR;
 		gwr->care_min  = gcinfo->flags & GIF_WRITE_CAREFUL_MIN_CODE_SIZE;
 	} else {
@@ -653,7 +652,7 @@ save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool do_shrink)
 	gwr->length = 0;
 }
 
-void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, const Gif_CompressInfo *gcinfo)
+void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo *gcinfo)
 {
 	Gif_Writer gwr;
 

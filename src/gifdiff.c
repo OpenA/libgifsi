@@ -528,7 +528,7 @@ read_stream(const char **filename)
     }
     gifread_error_count = 0;
     if (!(Gif_NewStream(gfs, *filename) &&
-          Gif_FullReadFile(gfs, GIF_READ_COMPRESSED, f)))
+          Gif_FullReadFile(gfs, GIF_READ_IMAGE_RAW, f)))
         fatal_error("%s: file not in GIF format\n", *filename);
     return gfs;
 }

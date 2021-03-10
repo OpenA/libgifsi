@@ -963,7 +963,7 @@ read_colormap_file(const char *name, FILE *f)
   if (c == 'G') {
     Gif_Stream *gfs;
     if (!(Gif_NewStream(gfs, NULL) &&
-        Gif_FullReadFile(gfs, GIF_READ_COMPRESSED, f)))
+        Gif_FullReadFile(gfs, GIF_READ_IMAGE_RAW, f)))
       lerror(name, "file not in GIF format");
     else if (!gfs->global
              && (gfs->nimages == 0 || !gfs->images[0]->local))

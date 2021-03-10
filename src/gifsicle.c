@@ -744,7 +744,7 @@ input_stream(const char *name)
     int old_error_count = error_count;
     if (Gif_NewStream(gfs, name)) {
       Gif_SetErrorHandler(gfs, GE_Log, gif_error_handler);
-      if (Gif_FullReadFile(gfs, gif_read_flags | GIF_READ_COMPRESSED, f))
+      if (Gif_FullReadFile(gfs, gif_read_flags | GIF_READ_IMAGE_RAW, f))
         stream_ok = Gif_GetImagesCount(gfs) && gfs->errors.num == 0;
     }
     if (!stream_ok && componentno != 1)

@@ -414,7 +414,7 @@ read_compressed_image_data(Gif_Reader *grr, Gif_Image *gfi, int flags)
 		grr->pos = grr->length;
 	gfi->compressed_len = grr->pos - image_pos;
 	gfi->compressed_errors = 0;
-	if (flags & GIF_READ_CONST_RECORD) {
+	if (flags & GIF_READ_IMAGE_RAW_CONST) {
 		gfi->compressed = (unsigned char *) &grr->data[image_pos];
 	} else {
 		gfi->compressed = Gif_NewArray(unsigned char, gfi->compressed_len);
@@ -538,15 +538,15 @@ read_image(struct GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Imag
 	gfi->interlace = (packed & 0x40) != 0;
 
 	/* Keep the compressed data if asked */
-	if (flags & GIF_READ_COMPRESSED) {
+	if (flags & GIF_READ_IMAGE_RAW) {
 		if (!read_compressed_image(grr, gfi, flags))
 			return false;
-		if (flags & GIF_READ_UNCOMPRESSED) {
+		if (flags & GIF_READ_IMAGE_DECODED) {
 			Gif_Reader new_grr;
 			make_data_reader(&new_grr, gfi->compressed, gfi->compressed_len);
 			ok = uncompress_image(gctx, gfi, &new_grr);
 		}
-	} else if (flags & GIF_READ_UNCOMPRESSED) {
+	} else if (flags & GIF_READ_IMAGE_DECODED) {
 		ok = uncompress_image(gctx, gfi, grr);
 	} else {
 		/* skip over the image */
@@ -754,7 +754,7 @@ read_gif(Gif_Reader *grr, int flags, Gif_Stream *gst)
 			break;
 		default:
 			if (!unknown_block_type) {
-				char buf[256];
+				char buf[READ_BUFFER_SIZE];
 				sprintf(buf, "unknown block type %d at file offset %u", byte, grr->pos - 1);
 				emit_read_error(&gctx, GE_Error, buf);
 			}
@@ -805,7 +805,5 @@ bool Gif_FullReadData(Gif_Stream *gst, char read_flags, const unsigned char *dat
 	if (!data || !gst)
 		return false;
 	make_data_reader(&grr, data, length);
-	if (read_flags &  GIF_READ_CONST_RECORD)
-		read_flags |= GIF_READ_COMPRESSED;
 	return  read_gif(&grr, read_flags, gst);
 }

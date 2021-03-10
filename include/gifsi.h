@@ -354,11 +354,13 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_CDiversity, unsigned *nco
 void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *, Gif_CompressInfo *);
 
 
+
 /** READING AND WRITING **/
-#define GIF_READ_COMPRESSED             1
-#define GIF_READ_UNCOMPRESSED           2
-#define GIF_READ_CONST_RECORD           4
-#define GIF_READ_TRAILING_GARBAGE_OK    8
+#define GIF_READ_INFO_ONLY           0
+#define GIF_READ_IMAGE_RAW           1
+#define GIF_READ_IMAGE_RAW_CONST     3
+#define GIF_READ_IMAGE_DECODED       4
+#define GIF_READ_TRAILING_GARBAGE_OK 8
 
 #define GIF_WRITE_CAREFUL_MIN_CODE_SIZE 1
 #define GIF_WRITE_EAGER_CLEAR           2
@@ -368,14 +370,14 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap     
 bool     Gif_FullReadData (Gif_Stream *, char read_flags   , const unsigned char *, unsigned);
 unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *,       unsigned char **);
 
-#define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_UNCOMPRESSED,d,l)
+#define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_IMAGE_DECODED,d,l)
 #define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)
 
 #if WITH_FILE_IO
 bool     Gif_FullReadFile (Gif_Stream *, char read_flags   , FILE *);
 unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo *, FILE *);
 
-#define Gif_ReadFile(gst,f)  Gif_FullReadFile(gst,GIF_READ_UNCOMPRESSED,f)
+#define Gif_ReadFile(gst,f)  Gif_FullReadFile(gst,GIF_READ_IMAGE_DECODED,f)
 #define Gif_WriteFile(gst,f) Gif_FullWriteFile(gst,NULL,f)
 #endif
 

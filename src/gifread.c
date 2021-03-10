@@ -45,26 +45,23 @@ struct Gif_Reader {
 	const unsigned int length;
 
 	unsigned pos;
-
-	bool is_record, is_end;
+	bool is_end;
 
 	unsigned char (*Read_byte )(Gif_Reader *);
 	unsigned int  (*Read_chunk)(Gif_Reader *, unsigned char *, unsigned);
 	void          (*Skip_bytes)(Gif_Reader *, unsigned );
+	bool          (*Read_image)(Gif_Reader *, Gif_Image *, bool);
 };
 
 #define readUint8(grr)        ((*grr->Read_byte )(grr))
 #define readUint16(grr)       ((*grr->Read_byte )(grr) | (*grr->Read_byte)(grr) << 8)
 #define skipBytes(grr,off)    ((*grr->Skip_bytes)(grr, off))
 #define readChunk(grr,buf,sz) ((*grr->Read_chunk)(grr, buf, sz))
+#define readImage(grr,gim,ok) ((*grr->Read_image)(grr, gim, ok))
 
 #define SET_ReaderDefaults(l) {\
 	.pos = 0, .is_end = false, .length = l \
 }
-
-#define read_compressed_image(r,i,f) (r->is_record ? \
-	read_compressed_image_data(r,i,f) : \
-	read_compressed_image_file(r,i,f))
 
 #if WITH_FILE_IO
 static void
@@ -100,11 +97,42 @@ read_file_chunk(Gif_Reader *grr, unsigned char *buf, unsigned size)
 	return chunk;
 }
 
+static bool
+read_file_image_compressed(Gif_Reader *grr, Gif_Image *gim, bool is_record)
+{
+	/* non-record; have to read it block by block. */
+	unsigned len = 1, cap = 1024;
+	unsigned char size, *raw_data = Gif_NewArray(unsigned char, cap);
+
+	if (!raw_data)
+		return false;
+
+	/* min code size */
+	raw_data[0] = readUint8(grr);
+
+	while ((size = readUint8(grr)) > 0) {
+		/* add 2 before check so we don't have to check after loop when appending
+		   0 block */
+		if (len + size + 2 > cap) {
+			cap *= 2;
+			if (!Gif_ReArray(raw_data, unsigned char, cap))
+				return false;
+		}
+		raw_data[len] = size;
+		readChunk(grr, &raw_data[len + 1], size);
+		len += size + 1;
+	}
+	gim->compressed_len    = len + 1;
+	gim->compressed_errors = raw_data[len] = 0;
+	gim->compressed        = raw_data;
+	return true;
+}
+
 static void
 make_file_reader(Gif_Reader *grr, FILE *file)
 {
 	grr->file       = file;
-	grr->is_record  = false;
+	grr->Read_image = read_file_image_compressed;
 	grr->Read_byte  = read_file_byte;
 	grr->Read_chunk = read_file_chunk;
 	grr->Skip_bytes = skip_file_bytes;
@@ -134,11 +162,41 @@ skip_data_bytes(Gif_Reader *grr, unsigned offset)
 	grr->pos = (grr->is_end = new_pos >= grr->length) ? grr->length : new_pos;
 }
 
+static bool
+read_data_image_compressed(Gif_Reader *grr, Gif_Image *gim, bool has_const_record)
+{
+	unsigned start_pos = grr->pos,
+	     size, end_pos = grr->pos + 1; /* skip min code size */
+
+	/* scan over image */
+	while (end_pos < grr->length) {
+		unsigned char amt = grr->data[end_pos];
+		end_pos += amt + 1;
+		if (amt == 0)
+			break;
+	}
+	if (end_pos > grr->length)
+		end_pos = grr->length;
+
+	grr->pos = end_pos;
+	gim->compressed_len = (size = end_pos - start_pos);
+	gim->compressed_errors = 0;
+
+	if (has_const_record) {
+		gim->compressed = (unsigned char *)&grr->data[start_pos];
+	} else
+	if ((gim->compressed = Gif_NewArray(unsigned char, size))) {
+		memcpy(gim->compressed, &grr->data[start_pos], size);
+	} else
+		return false;
+	return true;
+}
+
 static void
 make_data_reader(Gif_Reader *grr, const unsigned char *data)
 {
 	grr->data       = data;
-	grr->is_record  = true;
+	grr->Read_image = read_data_image_compressed;
 	grr->Read_byte  = read_data_byte;
 	grr->Read_chunk = read_data_chunk;
 	grr->Skip_bytes = skip_data_bytes;
@@ -402,66 +460,6 @@ read_logical_screen_descriptor(Gif_Reader *grr, Gif_Stream *gfs)
 }
 
 static bool
-read_compressed_image_data(Gif_Reader *grr, Gif_Image *gfi, int flags)
-{
-	const unsigned image_pos = grr->pos;
-	/* scan over image */
-	grr->pos++; /* skip min code size */
-	while (grr->pos < grr->length) {
-		int amt = grr->data[grr->pos];
-		grr->pos += amt + 1;
-		if (amt == 0)
-			break;
-	}
-	if (grr->pos > grr->length)
-		grr->pos = grr->length;
-	gfi->compressed_len = grr->pos - image_pos;
-	gfi->compressed_errors = 0;
-	if (flags & GIF_READ_IMAGE_RAW_CONST) {
-		gfi->compressed = (unsigned char *) &grr->data[image_pos];
-	} else {
-		gfi->compressed = Gif_NewArray(unsigned char, gfi->compressed_len);
-		if (!gfi->compressed)
-			return false;
-		memcpy(gfi->compressed, &grr->data[image_pos], gfi->compressed_len);
-	}
-	return true;
-}
-
-static bool
-read_compressed_image_file(Gif_Reader *grr, Gif_Image *gfi, int flags)
-{
-	/* non-record; have to read it block by block. */
-	unsigned   comp_cap = 1024, comp_len;
-	unsigned char *comp = Gif_NewArray(unsigned char, comp_cap);
-	if (!comp)
-		return false;
-
-	/* min code size */
-	comp[0] = readUint8(grr);
-	comp_len = 1;
-
-	for (int i; (i = readUint8(grr)) > 0;) {
-		/* add 2 before check so we don't have to check after loop when appending
-		   0 block */
-		if (comp_len + i + 2 > comp_cap) {
-			comp_cap *= 2;
-			Gif_ReArray(comp, unsigned char, comp_cap);
-			if (!comp)
-				return false;
-		}
-		comp[comp_len] = i;
-		readChunk(grr, comp + comp_len + 1, i);
-		comp_len += i + 1;
-	}
-	comp[comp_len]         = 0;
-	gfi->compressed_len    = comp_len + 1;
-	gfi->compressed_errors = 0;
-	gfi->compressed        = comp;
-	return true;
-}
-
-static bool
 uncompress_image(GReadContext *gctx, Gif_Image *gfi, Gif_Reader *grr)
 {
 	if (!Gif_CreateUncompressedImage(gfi, gfi->interlace))
@@ -542,7 +540,7 @@ read_image(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 
 	/* Keep the compressed data if asked */
 	if (flags & GIF_READ_IMAGE_RAW) {
-		if (!read_compressed_image(grr, gfi, flags))
+		if (!readImage(grr, gfi, flags & GIF_READ_IMAGE_RAW_CONST))
 			return false;
 		if (flags & GIF_READ_IMAGE_DECODED) {
 			Gif_Reader cdr = SET_ReaderDefaults(gfi->compressed_len);

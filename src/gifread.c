@@ -68,9 +68,11 @@ static void
 skip_file_bytes(Gif_Reader *grr, unsigned offset)
 {
 	fseek(grr->file, offset, SEEK_CUR);
-	unsigned diff = ftell(grr->file) - grr->pos;
-	grr->is_end = feof(grr->file) != 0;
-	grr->pos += diff != offset ? diff : offset;
+	if (feof(grr->file) != 0) {
+		grr->is_end = true;
+		grr->pos = ftell(grr->file);
+	} else
+		grr->pos += offset;
 }
 
 static unsigned char
@@ -158,8 +160,11 @@ read_data_chunk(Gif_Reader *grr, unsigned char *buf, unsigned size)
 static void
 skip_data_bytes(Gif_Reader *grr, unsigned offset)
 {
-	unsigned new_pos = grr->pos + offset;
-	grr->pos = (grr->is_end = new_pos >= grr->length) ? grr->length : new_pos;
+	if (grr->pos + offset >= grr->length) {
+		grr->pos = grr->length;
+		grr->is_end = true;
+	} else
+		grr->pos += offset;
 }
 
 static bool
@@ -503,58 +508,58 @@ int Gif_FullUncompressImage(Gif_Stream *gst, Gif_Image *gfi, char read_flags)
 }
 
 static int
-read_image(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi, int flags)
+read_image(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gst, Gif_Image *gim, char flags)
 {
-	bool     ok     = true;
-	unsigned left   = (gfi->left   = readUint16(grr) );
-	unsigned top    = (gfi->top    = readUint16(grr) );
-	unsigned width  = (gfi->width  = readUint16(grr) ?: gfs->screen_width);
-	unsigned height = (gfi->height = readUint16(grr) ?: gfs->screen_height);
+	bool ok = true;
+	const unsigned left   = readUint16(grr);
+	const unsigned top    = readUint16(grr);
+	const unsigned width  = readUint16(grr) ?: gst->screen_width;
+	const unsigned height = readUint16(grr) ?: gst->screen_height;
+	unsigned char  packed = readUint8 (grr);
   /* Mainline GIF processors (Firefox, etc.) process missing width (height)
      as screen_width (screen_height). */
 
 	/* If still zero, error. */
 	if (width == 0 || height == 0) {
 		emit_read_error(gctx, GE_Error, "image has zero width and/or height");
-		Gif_MakeImageEmpty(gfi);
 		flags = 0;
 	}
 	/* If position out of range, error. */
 	if (left + width > GIF_MAX_SCREEN_WIDTH || top + height > GIF_MAX_SCREEN_HEIGHT) {
 		emit_read_error(gctx, GE_Error, "image position and/or dimensions out of range");
-		Gif_MakeImageEmpty(gfi);
 		flags = 0;
 	}
 	GIF_DEBUG(("<%ux%u> ", width, height));
 
-	unsigned char packed = readUint8(grr);
 	if (packed & 0x80) { /* have a local color table */
 		int size = 1 << ((packed & 0x07) + 1);
-		if (!(gfi->local = read_color_table(grr, size)))
+		if (!(gim->local = read_color_table(grr, size)))
 			return false;
-		gfs->has_local_colors = true;
-		gfi->local->refcount = 1;
+		gst->has_local_colors = true;
+		gim->local->refcount = 1;
 	}
-
-	gfi->interlace = (packed & 0x40) != 0;
+	gim->interlace = (packed & 0x40) != 0;
+	gim->left = left, gim->width = width;
+	gim->top  = top, gim->height = height;
 
 	/* Keep the compressed data if asked */
 	if (flags & GIF_READ_IMAGE_RAW) {
-		if (!readImage(grr, gfi, flags & GIF_READ_IMAGE_RAW_CONST))
+		if (!readImage(grr, gim, flags & GIF_READ_IMAGE_RAW_CONST))
 			return false;
 		if (flags & GIF_READ_IMAGE_DECODED) {
-			Gif_Reader cdr = SET_ReaderDefaults(gfi->compressed_len);
-			make_data_reader(&cdr, gfi->compressed);
-			ok = uncompress_image(gctx, gfi, &cdr);
+			Gif_Reader cdr = SET_ReaderDefaults(gim->compressed_len);
+			make_data_reader(&cdr, gim->compressed);
+			ok = uncompress_image(gctx, gim, &cdr);
 		}
 	} else if (flags & GIF_READ_IMAGE_DECODED) {
-		ok = uncompress_image(gctx, gfi, grr);
+		ok = uncompress_image(gctx, gim, grr);
 	} else {
+		/* skip min code size */
+		skipBytes(grr, 1);
 		/* skip over the image */
-		unsigned char buffer[READ_BUFFER_SIZE];
-		unsigned int  size;
-		while ((size = readUint8(grr)) > 0)
-			readChunk(grr, buffer, size);
+		while ((packed = readUint8(grr)))
+			skipBytes(grr, packed);
+		Gif_MakeImageEmpty(gim);
 	}
 	return ok;
 }
@@ -562,8 +567,7 @@ read_image(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 static void
 read_graphic_control_extension(GReadContext *gctx, Gif_Image *gfi, Gif_Reader *grr)
 {
-	unsigned char crap[READ_BUFFER_SIZE];
-	unsigned int  len = readUint8(grr);
+	unsigned char len = readUint8(grr);
 	unsigned char packed;
 
 	if (len == 4) {
@@ -578,8 +582,8 @@ read_graphic_control_extension(GReadContext *gctx, Gif_Image *gfi, Gif_Reader *g
 	if (len != 0) {
 		emit_read_error(gctx, GE_Error, "bad graphic extension");
 		do {
-			readChunk(grr, crap, len);
-		} while ((len = readUint8(grr)) > 0);
+			skipBytes(grr, len);
+		} while ((len = readUint8(grr)));
 	}
 }
 
@@ -656,8 +660,8 @@ read_application_extension(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs,
 		} else
 			emit_read_error(gctx, GE_Error, "bad loop extension");
 
-		while (len > 0) {
-			readChunk(grr, buf, len);
+		while (len) {
+			skipBytes(grr, len);
 			len = readUint8(grr);
 		}
 	} else

@@ -367,8 +367,8 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap     
 #define GIF_WRITE_OPTIMIZE              4
 #define GIF_WRITE_SHRINK                8
 
-bool     Gif_FullReadData (Gif_Stream *, char read_flags   , const unsigned char *, unsigned);
-unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *,       unsigned char **);
+bool     Gif_FullReadData (Gif_Stream *, char read_flags   , const unsigned char *data, unsigned len);
+unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *,       unsigned char **out);
 
 #define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_IMAGE_DECODED,d,l)
 #define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)

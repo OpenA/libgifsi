@@ -661,7 +661,7 @@ static void _Ex_(transp_frame_data)(
 	unsigned short x, y, nsame = 0;
 
 	Gif_FullCompressImage(gfs, gfi, gcinfo);
-	gcinfo->flags |= GIF_WRITE_SHRINK;
+	gcinfo->flags |= GIF_WRITE_MINIMAL;
 
   /* Actually copy data to frame.
 
@@ -744,7 +744,7 @@ static void _Ex_(transp_frame_data)(
 	}
 	Gif_ReleaseUncompressedImage(gfi);
 
-	gcinfo->flags &= ~GIF_WRITE_SHRINK;
+	gcinfo->flags &= ~GIF_WRITE_MINIMAL;
 }
 
 static void _Ex_(make_out_frames)(

@@ -1931,7 +1931,7 @@ main(int argc, char *argv[])
        if (clp->negated)
          gif_write_info.flags = 0;
        else
-         gif_write_info.flags = GIF_WRITE_CAREFUL_MIN_CODE_SIZE | GIF_WRITE_EAGER_CLEAR;
+         gif_write_info.flags = GIF_WRITE_CAREFUL | GIF_WRITE_TRUNC_PADS;
        break;
      }
 

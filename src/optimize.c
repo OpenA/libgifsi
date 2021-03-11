@@ -385,7 +385,7 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 
 	int opt_lvl = optimize_flags & GIF_OPT_MASK;
 	if (opt_lvl >= 3)
-		gcinfo->flags |= GIF_WRITE_OPTIMIZE;
+		gcinfo->flags |= GIF_WRITE_OPTIMAL;
 
 	if ((unsigned)complex_cm->ncol >= 0xFFFF) {
 		create_new_image_data32(gfs, complex_cm, bg_color, opt_lvl, !huge_stream, gcinfo);

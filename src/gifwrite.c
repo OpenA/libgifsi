@@ -66,7 +66,7 @@ struct Gif_Writer {
 
 	unsigned short diff_max;
 	unsigned global_size, local_size;
-	bool is_cleared, has_eager, care_min;
+	bool is_cleared, alw_clear, careful;
 
 	short errors;
 
@@ -86,11 +86,11 @@ struct Gif_Writer {
 		pos += b, len -= b;\
 	}
 
-#define SET_WriterParams(gci) {\
+#define SET_WriterDefaults(gci) {\
 	.is_cleared = false, .length = 0, .cap = 0, .errors = 0,\
 	.diff_max   = (gci && gci->lossy > 0 ? gci->lossy * 100 : 0),\
-	.has_eager  = (gci && gci->flags & GIF_WRITE_EAGER_CLEAR),\
-	.care_min   = (gci && gci->flags & GIF_WRITE_CAREFUL_MIN_CODE_SIZE)\
+	.alw_clear  = (gci && gci->flags & GIF_WRITE_TRUNC_PADS),\
+	.careful    = (gci && gci->flags & GIF_WRITE_CAREFUL)\
 }
 
 #if WITH_FILE_IO
@@ -383,8 +383,8 @@ gif_pixel_at_pos(Gif_Image *gfi, unsigned pos)
 }
 
 static int
-write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs,
-                      Gif_Image  *gfi, int min_code_bits)
+write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs, Gif_Image *gfi,
+                      const unsigned char min_code_bits)
 {
 	unsigned char stack_buffer[512 - 24];
 	unsigned char *buf = stack_buffer;
@@ -447,7 +447,7 @@ write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs,
 	than an empirical threshold, meaning it will take more than
 	3000 or so average runs to complete the image. */
 #define _DO_CLEAR(_0_,_1_) (\
-	gwr->has_eager ?: (\
+	gwr->alw_clear || (\
 		run_ewma < ((36U << EWMA_PAD_B) / min_code_bits) ||\
 		           (image_endpos - pos - _0_) > UINT32_MAX / ((unsigned)(1 << EWMA_PAD_B) / 3000) ||\
 		run_ewma < (image_endpos - pos - _0_) *              ((unsigned)(1 << EWMA_PAD_B) / 3000)\
@@ -610,7 +610,7 @@ calculate_min_code_bits(Gif_Image *gfi, const Gif_Writer *grr)
 {
 	int colors_used = 0, min_code_bits = 2, x, y;
 
-	if (grr->care_min) {
+	if (grr->careful) {
 		/* calculate m_c_b based on colormap */
 		colors_used = grr->local_size ?: grr->global_size ?: -1;
 	} else if (gfi->img) {
@@ -642,9 +642,9 @@ static unsigned get_color_table_size(const Gif_Stream *gfs, Gif_Image *gfi,
                                 Gif_Writer *grr);
 
 static void
-save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool do_shrink)
+save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool minimal)
 {
-	if (!do_shrink || !gim->compressed || gim->compressed_len > gwr->length) {
+	if (!minimal || !gim->compressed || gim->compressed_len > gwr->length) {
 		if (gim->compressed)
 			Gif_Free(gim->compressed);
 		gim->compressed_errors = 0;
@@ -658,16 +658,16 @@ save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool do_shrink)
 
 void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo *gcinfo)
 {
-	Gif_Writer gwr = SET_WriterParams(gcinfo);
+	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 
 	unsigned char min_code_bits;
 
-	bool do_shrink = (gcinfo->flags &  GIF_WRITE_SHRINK);
-	bool do_optim  = (gcinfo->flags & (GIF_WRITE_OPTIMIZE | GIF_WRITE_EAGER_CLEAR)) == GIF_WRITE_OPTIMIZE;
+	bool minimal = (gcinfo->flags &  GIF_WRITE_MINIMAL);
+	bool optimal = (gcinfo->flags & (GIF_WRITE_OPTIMAL | GIF_WRITE_TRUNC_PADS)) == GIF_WRITE_OPTIMAL;
 
 	init_dataWriter(&gwr);
 
-	if (!do_shrink)
+	if (!minimal)
 		Gif_ReleaseCompressedImage(gim);
 	
 	gwr.global_size = get_color_table_size(gst, NULL, &gwr);
@@ -675,12 +675,12 @@ void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo *gc
 	min_code_bits   = calculate_min_code_bits(gim, &gwr);
 
 	if (write_compressed_data(&gwr, gst, gim, min_code_bits)) {
-		save_compression_result(&gwr, gim, do_shrink);
+		save_compression_result(&gwr, gim, minimal);
 
-		if (gwr.is_cleared && do_optim) {
-			gwr.has_eager = do_shrink = true;
+		if (gwr.is_cleared && optimal) {
+			gwr.alw_clear = true;
 			if (write_compressed_data(&gwr, gst, gim, min_code_bits))
-				save_compression_result(&gwr, gim, do_shrink);
+				save_compression_result(&gwr, gim, true);
 		}
 	}
 }
@@ -700,7 +700,7 @@ get_color_table_size(const Gif_Stream *gfs, Gif_Image *gfi, Gif_Writer *grr)
 
 	/* Possibly bump up 'ncol' based on 'transparent' values, if
 		careful_min_code_bits */
-	if (grr->care_min) {
+	if (grr->careful) {
 		if (gfi && gfi->transparent >= ncol)
 			ncol = gfi->transparent + 1;
 		else if (!gfi)
@@ -766,13 +766,13 @@ write_image(Gif_Writer *gwr, Gif_Stream *gfs, Gif_Image *gfi)
 		write_color_table(gfi->local, gwr->local_size, gwr);
 
 	/* calculate min_code_bits here (because calculation may involve
-		recompression, if GIF_WRITE_CAREFUL_MIN_CODE_SIZE is true) */
+		recompression, if GIF_WRITE_CAREFUL is true) */
 	min_code_bits = calculate_min_code_bits(gfi, gwr);
 
 	/* use existing compressed data if it exists. This will tend to whip
 		people's asses who uncompress an image, keep the compressed data around,
 		but modify the uncompressed data anyway. That sucks. */
-	if (gfi->compressed && (!gwr->care_min || gfi->compressed[0] == min_code_bits)) {
+	if (gfi->compressed && (!gwr->careful || gfi->compressed[0] == min_code_bits)) {
 		unsigned char *compressed = gfi->compressed;
 		unsigned compressed_len = gfi->compressed_len;
 		while (compressed_len > 0) {
@@ -957,7 +957,7 @@ unsigned int Gif_FullWriteFile(
 	Gif_CompressInfo *gcinfo,
 	FILE             *file
 ) {
-	Gif_Writer gwr = SET_WriterParams(gcinfo);
+	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 
 	init_fileWriter(&gwr, file);
 
@@ -973,7 +973,7 @@ unsigned int Gif_FullWriteData(
 	Gif_CompressInfo *gcinfo,
 	unsigned char   **out
 ) {
-	Gif_Writer gwr = SET_WriterParams(gcinfo);
+	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 
 	init_dataWriter(&gwr);
 

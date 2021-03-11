@@ -387,7 +387,7 @@ static Gif_OptData **_Ex_(make_opt_samples)(
 	UINT_t     *this_data,
 	unsigned    bg_color,
 	const int   all_ncol,
-	const int   opt_lvl,
+	const bool  has_O2,
 	const bool  save_uncompressed
 ) {
 	const unsigned short max_w = gfs->screen_width,
@@ -443,7 +443,7 @@ retry_frame:
 		if (i > 0) {
 			_Ex_(find_difference_bounds)(subimage, ob, last_data, this_data,
 				(last_disp == GD_None || last_disp == GD_Asis));
-			if (opt_lvl > 1)
+			if (has_O2)
 				tColor = TColorReplace;
 		} else {
 			subimage->left   = ob.left;
@@ -649,19 +649,19 @@ static void _Ex_(transp_frame_data)(
 	Gif_Image  *gfi, 
 	UINT_t     *last_data,
 	UINT_t     *this_data,
-	const bool  need_compress,
+	const bool  has_O3,
 
 	unsigned char    *map,
 	Gif_OptBounds     ob,
-	Gif_CompressInfo *gcinfo
+	Gif_CompressInfo  gcinfo
 ) {
 	short transparent = gfi->transparent;
 	UINT_t *last = NULL, *cur = NULL;
 	unsigned char *data, *begin_same, *t2_data = NULL, *last_for_t2;
 	unsigned short x, y, nsame = 0;
 
-	Gif_FullCompressImage(gfs, gfi, gcinfo);
-	gcinfo->flags |= GIF_WRITE_MINIMAL;
+	Gif_FullCompressImage(gfs, gfi, &gcinfo);
+	gcinfo.flags |= GIF_WRITE_MINIMAL;
 
   /* Actually copy data to frame.
 
@@ -711,9 +711,9 @@ static void _Ex_(transp_frame_data)(
 
 		for (x = 0; x < ob.width; x++, data++, cur++, last++) {
 			if (*cur != *last && map[*cur] != transparent) {
-				if (nsame == 1 && data[-1] != transparent && need_compress) {
+				if (nsame == 1 && data[-1] != transparent && has_O3) {
 					if (!t2_data)
-						t2_data = Gif_NewArray(unsigned char, (size_t)ob.width * (size_t)ob.height);
+						t2_data = Gif_NewArray(unsigned char, (unsigned)ob.width * (unsigned)ob.height);
 					memcpy(t2_data + (last_for_t2 - gfi->image_data),
 						last_for_t2, begin_same - last_for_t2);
 					memset(t2_data + (begin_same - gfi->image_data),
@@ -737,14 +737,12 @@ static void _Ex_(transp_frame_data)(
 
 	/* Now, try compressed transparent version(s) and pick the better of the
 	   two (or three). */
-	Gif_FullCompressImage(gfs, gfi, gcinfo);
+	Gif_FullCompressImage(gfs, gfi, &gcinfo);
 	if (t2_data) {
 		Gif_SetUncompressedImage(gfi, false, t2_data);
-		Gif_FullCompressImage(gfs, gfi, gcinfo);
+		Gif_FullCompressImage(gfs, gfi, &gcinfo);
 	}
 	Gif_ReleaseUncompressedImage(gfi);
-
-	gcinfo->flags &= ~GIF_WRITE_MINIMAL;
 }
 
 static void _Ex_(make_out_frames)(
@@ -753,12 +751,13 @@ static void _Ex_(make_out_frames)(
 	Gif_Image   *gfi,
 	UINT_t      *last_data,
 	UINT_t      *this_data,
-	const int    opt_lvl,
+	const bool   has_O2,
+	const bool   has_O3,
 	const bool   not_first,
 	const bool   was_compress,
 
 	Gif_Colormap *complex_cm,
-	Gif_CompressInfo *gcinfo
+	Gif_CompressInfo gcinfo
 ) {
 	Gif_Disposal  disp = (gfi->disposal = opt->disposal);
 	unsigned short top = (gfi->top      = opt->top     ),
@@ -798,12 +797,12 @@ static void _Ex_(make_out_frames)(
 	Gif_SetUncompressedImage(gfi, false, data);
 
 	/* don't use transparency on first frame */
-	if (opt_lvl > 1 && not_first && gfi->transparent >= 0) {
-		_Ex_(transp_frame_data)(gfs, gfi, last_data, this_data, opt_lvl > 2, map, ob, gcinfo);
+	if (has_O2 && not_first && gfi->transparent >= 0) {
+		_Ex_(transp_frame_data)(gfs, gfi, last_data, this_data, has_O3, map, ob, gcinfo);
 	}
 	if (gfi->img) {
-		if (was_compress || opt_lvl > 1) {
-			Gif_FullCompressImage(gfs, gfi, gcinfo);
+		if (was_compress || has_O2) {
+			Gif_FullCompressImage(gfs, gfi, &gcinfo);
 			Gif_ReleaseUncompressedImage(gfi);
 		} else  /* bug fix 22.May.2001 */
 			Gif_ReleaseCompressedImage(gfi);
@@ -845,10 +844,11 @@ static void _Ex_(create_new_image_data)(
 	Gif_Stream   *gfs,
 	Gif_Colormap *complex_cm,
 	unsigned      bg_color,
-	const int     opt_lvl,
+	const bool    has_O2,
+	const bool    has_O3,
 	const bool    save_uncompress,
 
-	Gif_CompressInfo *gcinfo
+	Gif_CompressInfo gcinfo
 ) {
 	/* placeholder; maintains pre-optimization
 	   image size so we can apply background disposal */
@@ -861,7 +861,7 @@ static void _Ex_(create_new_image_data)(
 	UINT_t *last_data = Gif_NewArray(UINT_t, screen_size);
 	UINT_t *this_data = Gif_NewArray(UINT_t, screen_size);
 
-	Gif_OptData **opt = _Ex_(make_opt_samples)(gfs, prev_data, last_data, this_data, bg_color, complex_cm->ncol, opt_lvl, save_uncompress);
+	Gif_OptData **opt = _Ex_(make_opt_samples)(gfs, prev_data, last_data, this_data, bg_color, complex_cm->ncol, has_O2, save_uncompress);
 	/* Return the old global colormap, and replace in stream */
 	Gif_Colormap *gcm = _Ex_(make_opt_colormap)(gfs, opt, complex_cm, bg_color);
 
@@ -890,7 +890,7 @@ static void _Ex_(create_new_image_data)(
 		/* set bounds and disposal from optdata */
 		Gif_ReleaseUncompressedImage(gfi);
 
-		_Ex_(make_out_frames)(opt[i], gfs, gfi, last_data, this_data, opt_lvl, i > 0, was_compressed, complex_cm, gcinfo);
+		_Ex_(make_out_frames)(opt[i], gfs, gfi, last_data, this_data, has_O2, has_O3, (bool)i, was_compressed, complex_cm, gcinfo);
 
 		if (disp == GD_Background)
 			_Ex_(erase_data_area)(ob, this_data);

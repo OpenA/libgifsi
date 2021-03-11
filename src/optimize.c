@@ -316,10 +316,10 @@ static Gif_Colormap *init_colormaps(Gif_Stream *gfs, unsigned *bg_color)
 	return gl_cmap;
 }
 
-static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
+static void finalize_optimizer(Gif_Stream *gfs, const bool drop_empty)
 {
 	/* 11.Mar.2010 - remove entirely transparent frames. */
-	for (int i = 1; i < gfs->nimages && del_empty; i++) {
+	for (int i = 1; i < gfs->nimages && drop_empty; i++) {
 		Gif_Image *curr = gfs->images[i];
 		Gif_Image *prev = gfs->images[i - 1];
 		if (curr->width  == 1 && !curr->identifier &&
@@ -368,7 +368,7 @@ static void finalize_optimizer(Gif_Stream *gfs, bool del_empty)
 
 
 /* the interface function! */
-void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_stream, Gif_CompressInfo *gcinfo)
+void Gif_FullOptimize(Gif_Stream *gfs, Gif_CompressInfo gcinfo)
 {
 	unsigned bg_color;
 
@@ -378,22 +378,18 @@ void Gif_FullOptimizeFragments(Gif_Stream *gfs, int optimize_flags, int huge_str
 	/* Colormap containing all colors in the image. May have >256 colors */
 	Gif_Colormap *complex_cm = init_colormaps(gfs, &bg_color);
 
-	if (!gcinfo) {
-		gcinfo = Gif_New(Gif_CompressInfo);
-		gcinfo->flags = gcinfo->lossy = 0;
-	}
+	bool has_O2     =  (gcinfo.flags & GIF_OPTIZ_LVL2);
+	bool has_O3     =  (gcinfo.flags & GIF_OPTIZ_LVL3);
+	bool uncompress =  (gcinfo.flags & GIF_OPTIZ_SAVE_UNCOMP);
+	bool drop_empty = !(gcinfo.flags & GIF_OPTIZ_KEEP_EMPTY);
 
-	int opt_lvl = optimize_flags & GIF_OPT_MASK;
-	if (opt_lvl >= 3)
-		gcinfo->flags |= GIF_WRITE_OPTIMAL;
-
-	if ((unsigned)complex_cm->ncol >= 0xFFFF) {
-		create_new_image_data32(gfs, complex_cm, bg_color, opt_lvl, !huge_stream, gcinfo);
+	if (complex_cm->ncol >= UINT16_MAX) {
+		create_new_image_data32(gfs, complex_cm, bg_color, has_O2, has_O3, uncompress, gcinfo);
 	} else {
-		create_new_image_data16(gfs, complex_cm, bg_color, opt_lvl, !huge_stream, gcinfo);
+		create_new_image_data16(gfs, complex_cm, bg_color, has_O2, has_O3, uncompress, gcinfo);
 	}
 	if (bg_color == TColorEmpty)
 		gfs->background = (unsigned short)gfs->images[0]->transparent;
-	finalize_optimizer(gfs, !(optimize_flags & GIF_OPT_KEEPEMPTY));
+	finalize_optimizer(gfs, drop_empty);
 	Gif_DeleteColormap(complex_cm);
 }

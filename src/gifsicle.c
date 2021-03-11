@@ -987,18 +987,18 @@ merge_and_write_frames(const char *outfile, int f1, int f2)
   int compress_immediately;
   int colormap_change;
   int huge_stream;
+  int optim_lvl;
   assert(!nested_mode);
   if (verbosing)
     verbose_open('[', outfile ? outfile : "#stdout#");
   active_output_data.active_output_name = outfile;
 
+  optim_lvl = active_output_data.optimizing & GT_OPT_MASK;
   colormap_change = active_output_data.colormap_size > 0
     || active_output_data.colormap_fixed;
   warn_local_colormaps = !colormap_change;
 
-  if (!(active_output_data.scaling
-        || (active_output_data.optimizing & GT_OPT_MASK)
-        || colormap_change))
+  if (!(active_output_data.scaling || optim_lvl || colormap_change))
     compress_immediately = 1;
   else
     compress_immediately = active_output_data.conserve_memory;
@@ -1029,8 +1029,15 @@ merge_and_write_frames(const char *outfile, int f1, int f2)
       do_colormap_change(out);
     if (output_transforms)
       apply_color_transforms(output_transforms, out);
-    if (active_output_data.optimizing & GT_OPT_MASK)
-      Gif_FullOptimizeFragments(out, active_output_data.optimizing, huge_stream, &gif_write_info);
+    if (!huge_stream)
+      gif_write_info.flags |= GIF_OPTIZ_SAVE_UNCOMP;
+    if (optim_lvl) {
+      gif_write_info.flags |= (
+        optim_lvl > 2 ? GIF_OPTIZ_LVL3 :
+        optim_lvl > 1 ? GIF_OPTIZ_LVL2 :
+                        GIF_OPTIZ_LVL1);
+      Gif_FullOptimize(out, gif_write_info);
+    }
     write_stream(outfile, out);
     Gif_DeleteStream(out);
     Gif_FreeColorTransform(&quantz_tabs);

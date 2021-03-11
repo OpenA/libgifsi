@@ -132,11 +132,9 @@ void Gif_FreeStream(Gif_Stream *);
 int  Gif_PutImage      (Gif_Stream *, Gif_Image *);
 void Gif_RemoveImage   (Gif_Stream *, int  index);
 void Gif_CalcScreenSize(Gif_Stream *, bool force);
-bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
 
 //  Stream substitution macroses
 #define Gif_AddImage(gst,gim) (void)Gif_PutImage(gst,gim)
-#define Gif_Unoptimize(gfs)    Gif_FullUnoptimize(gfs, 0)
 
 
 //  Image class
@@ -193,17 +191,6 @@ void Gif_ReleaseUncompressedImage(Gif_Image *);
 void Gif_ReleaseCompressedImage  (Gif_Image *);
 void Gif_MakeImageEmpty          (Gif_Image *);
 
-
-typedef struct {
-	short flags; // write and opt flags
-	float lossy; // range 0-655.35 equals 100-0% quality
-} Gif_CompressInfo;
-
-#define Gif_UncompressImage(gst,gim) Gif_FullUncompressImage(gst, gim, 0)
-#define Gif_CompressImage(gst,gim)   Gif_FullCompressImage(gst, gim, NULL)
-
-int  Gif_FullUncompressImage (Gif_Stream *, Gif_Image *, char read_flags);
-void Gif_FullCompressImage   (Gif_Stream *, Gif_Image *, Gif_CompressInfo *);
 
 
 //  Color object
@@ -288,13 +275,32 @@ int  Gif_PutExtension (Gif_Extension *list, Gif_Extension *gfex);
 
 
 
-/* Optimizer */
-#define GIF_OPT_MASK      0xFFFF
-#define GIF_OPT_KEEPEMPTY 0x10000
+/* - - - - - - - - - - - - *
+   Compression settings
+ * - - - - - - - - - - - - */
+typedef struct {
+	short flags; // write and optiz flags
+	float lossy; // range 0-655.35 equals 100-0% quality
+} Gif_CompressInfo;
 
-#define Gif_OptimizeFragments(gfs,gfi) Gif_FullOptimizeFragments(gfs,f,h,NULL)
+#define GIF_OPTIZ_LVL1 0x100
+#define GIF_OPTIZ_LVL2 0x300
+#define GIF_OPTIZ_LVL3 0x704
+// reserved flags -----0x800, 0x4000,0x8000
+#define GIF_OPTIZ_SAVE_UNCOMP 0x1000
+#define GIF_OPTIZ_KEEP_EMPTY  0x2000
 
-void Gif_FullOptimizeFragments(Gif_Stream *, int, int, Gif_CompressInfo *);
+#define Gif_Unoptimize(gst) Gif_FullUnoptimize(gst, 0)
+#define Gif_Optimize(gst)   Gif_FullOptimize(gst, (Gif_CompressInfo){GIF_OPTIZ_LVL1,0})
+
+bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
+void Gif_FullOptimize  (Gif_Stream *, Gif_CompressInfo);
+
+#define Gif_UncompressImage(gst,gim) Gif_FullUncompressImage(gst, gim, 0)
+#define Gif_CompressImage(gst,gim)   Gif_FullCompressImage(gst, gim, NULL)
+
+int  Gif_FullUncompressImage(Gif_Stream *, Gif_Image *, char read_flags);
+void Gif_FullCompressImage  (Gif_Stream *, Gif_Image *, Gif_CompressInfo *);
 
 
 

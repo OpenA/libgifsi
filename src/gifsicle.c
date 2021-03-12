@@ -915,7 +915,7 @@ do_colormap_change(Gif_Stream *gfs)
       active_output_data.dither_data[2]);
 
   if (active_output_data.colormap_fixed)
-      Gif_FullQuantizeColors(gfs, active_output_data.colormap_fixed, &quantz_tabs, &gif_write_info);
+      Gif_FullQuantizeColors(gfs, &quantz_tabs, active_output_data.colormap_fixed, gif_write_info);
 
   if (active_output_data.colormap_size > 0) {
 
@@ -932,12 +932,12 @@ do_colormap_change(Gif_Stream *gfs)
         Gif_FreeColorTransform(&quantz_tabs);
         fatal_error("wrong colormap algorithm");
     }
-    new_cm = Gif_NewDiverseColormap(gfs, cm_alg, &ncols, &quantz_tabs);
+    new_cm = Gif_NewDiverseColormap(gfs, &quantz_tabs, cm_alg, &ncols);
 
     if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
       warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
     if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_colors)
-      Gif_FullQuantizeColors(gfs, new_cm, &quantz_tabs, &gif_write_info);
+      Gif_FullQuantizeColors(gfs, &quantz_tabs, new_cm, gif_write_info);
     Gif_DeleteColormap(new_cm);
   }
 }
@@ -973,7 +973,7 @@ write_stream(const char *output_name, Gif_Stream *gfs)
   }
 
   if (f) {
-    Gif_FullWriteFile(gfs, &gif_write_info, f);
+    Gif_FullWriteFile(gfs, gif_write_info, f);
     fclose(f);
     any_output_successful = 1;
   } else

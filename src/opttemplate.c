@@ -660,7 +660,8 @@ static void _Ex_(transp_frame_data)(
 	unsigned char *data, *begin_same, *t2_data = NULL, *last_for_t2;
 	unsigned short x, y, nsame = 0;
 
-	Gif_FullCompressImage(gfs, gfi, &gcinfo);
+	gcinfo.flags &= ~GIF_WRITE_MINIMAL;
+	Gif_FullCompressImage(gfs, gfi, gcinfo);
 	gcinfo.flags |= GIF_WRITE_MINIMAL;
 
   /* Actually copy data to frame.
@@ -737,10 +738,10 @@ static void _Ex_(transp_frame_data)(
 
 	/* Now, try compressed transparent version(s) and pick the better of the
 	   two (or three). */
-	Gif_FullCompressImage(gfs, gfi, &gcinfo);
+	Gif_FullCompressImage(gfs, gfi, gcinfo);
 	if (t2_data) {
 		Gif_SetUncompressedImage(gfi, false, t2_data);
-		Gif_FullCompressImage(gfs, gfi, &gcinfo);
+		Gif_FullCompressImage(gfs, gfi, gcinfo);
 	}
 	Gif_ReleaseUncompressedImage(gfi);
 }
@@ -802,7 +803,7 @@ static void _Ex_(make_out_frames)(
 	}
 	if (gfi->img) {
 		if (was_compress || has_O2) {
-			Gif_FullCompressImage(gfs, gfi, &gcinfo);
+			Gif_FullCompressImage(gfs, gfi, gcinfo);
 			Gif_ReleaseUncompressedImage(gfi);
 		} else  /* bug fix 22.May.2001 */
 			Gif_ReleaseCompressedImage(gfi);

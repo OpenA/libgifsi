@@ -416,7 +416,7 @@ static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_ColorTransfo
 	kcdiversity_cleanup(&div);
 }
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_CDiversity alg, unsigned *ncol, Gif_ColorTransform *cot)
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_CDiversity alg, unsigned *ncol)
 {
 	Gif_Colormap *gfcm;
 	unsigned ntransp, adapt_size = *ncol;
@@ -1026,7 +1026,7 @@ static bool try_assign_transparency(
 }
 
 
-void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_Colormap *new_colmap, Gif_ColorTransform *cot, Gif_CompressInfo *gcinfo)
+void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colormap *new_colmap, Gif_CompressInfo gcinfo)
 {
 	kd3_tree kd3;
 	Gif_Color *new_col = new_colmap->col;

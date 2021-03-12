@@ -1202,7 +1202,7 @@ static void scale_image(scale_context* sctx, int method) {
     Gif_ReleaseCompressedImage(gfi);
     *gfi = gfo;
     if (was_compressed) {
-        Gif_FullCompressImage(sctx->gfs, gfi, &gif_write_info);
+        Gif_FullCompressImage(sctx->gfs, gfi, gif_write_info);
         Gif_ReleaseUncompressedImage(gfi);
     }
 }

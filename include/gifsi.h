@@ -283,8 +283,8 @@ typedef struct {
 	float lossy; // range 0-655.35 equals 100-0% quality
 } Gif_CompressInfo;
 
-#define GIF_OPTIZ_LVL1 0x100
-#define GIF_OPTIZ_LVL2 0x300
+#define GIF_OPTIZ_LVL1 0x104
+#define GIF_OPTIZ_LVL2 0x304
 #define GIF_OPTIZ_LVL3 0x704
 // reserved flags -----0x800, 0x4000,0x8000
 #define GIF_OPTIZ_SAVE_UNCOMP 0x1000
@@ -299,10 +299,10 @@ bool Gif_FullUnoptimize(Gif_Stream *, short unopt_flags);
 void Gif_FullOptimize  (Gif_Stream *, Gif_CompressInfo);
 
 #define Gif_UncompressImage(gst,gim) Gif_FullUncompressImage(gst, gim, 0)
-#define Gif_CompressImage(gst,gim)   Gif_FullCompressImage(gst, gim, NULL)
+#define Gif_CompressImage(gst,gim)   Gif_FullCompressImage(gst, gim, (Gif_CompressInfo){0,0})
 
 int  Gif_FullUncompressImage(Gif_Stream *, Gif_Image *, char read_flags);
-void Gif_FullCompressImage  (Gif_Stream *, Gif_Image *, Gif_CompressInfo *);
+void Gif_FullCompressImage  (Gif_Stream *, Gif_Image *, Gif_CompressInfo);
 
 
 
@@ -358,8 +358,8 @@ typedef enum {
 	CD_MedianCut
 } Gif_CDiversity;
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_CDiversity, unsigned *ncol, Gif_ColorTransform *);
-void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap      , Gif_ColorTransform *, Gif_CompressInfo *);
+Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_ColorTransform *, Gif_CDiversity, unsigned *ncol);
+void          Gif_FullQuantizeColors(Gif_Stream *, Gif_ColorTransform *, Gif_Colormap *new_colmap,  Gif_CompressInfo);
 
 
 
@@ -371,22 +371,22 @@ void          Gif_FullQuantizeColors(Gif_Stream *, Gif_Colormap *new_colmap     
 #define GIF_READ_TRAILING_GARBAGE_OK 8
 
 #define GIF_WRITE_TRUNC_PADS 1
-#define GIF_WRITE_MINIMAL    2
-#define GIF_WRITE_OPTIMAL    4
-#define GIF_WRITE_CAREFUL    8
+#define GIF_WRITE_CAREFUL    2
+#define GIF_WRITE_MINIMAL    4
+#define GIF_WRITE_DROP_EXTRA 8
 
-bool     Gif_FullReadData (Gif_Stream *, char read_flags   , const unsigned char *data, unsigned len);
-unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo *,       unsigned char **out);
+bool     Gif_FullReadData (Gif_Stream *, char read_flags , const unsigned char *data, unsigned len);
+unsigned Gif_FullWriteData(Gif_Stream *, Gif_CompressInfo,       unsigned char **out);
 
 #define Gif_ReadData(gst,d,l) Gif_FullReadData(gst,GIF_READ_IMAGE_DECODED,d,l)
-#define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,NULL,d)
+#define Gif_WriteData(gst,d)  Gif_FullWriteData(gst,(Gif_CompressInfo){0,0},d)
 
 #if WITH_FILE_IO
-bool     Gif_FullReadFile (Gif_Stream *, char read_flags   , FILE *);
-unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo *, FILE *);
+bool     Gif_FullReadFile (Gif_Stream *, char read_flags , FILE *);
+unsigned Gif_FullWriteFile(Gif_Stream *, Gif_CompressInfo, FILE *);
 
 #define Gif_ReadFile(gst,f)  Gif_FullReadFile(gst,GIF_READ_IMAGE_DECODED,f)
-#define Gif_WriteFile(gst,f) Gif_FullWriteFile(gst,NULL,f)
+#define Gif_WriteFile(gst,f) Gif_FullWriteFile(gst,(Gif_CompressInfo){0,0},f)
 #endif
 
 

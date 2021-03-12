@@ -88,9 +88,9 @@ struct Gif_Writer {
 
 #define SET_WriterDefaults(gci) {\
 	.is_cleared = false, .length = 0, .cap = 0, .errors = 0,\
-	.diff_max   = (gci && gci->lossy > 0 ? gci->lossy * 100 : 0),\
-	.alw_clear  = (gci && gci->flags & GIF_WRITE_TRUNC_PADS),\
-	.careful    = (gci && gci->flags & GIF_WRITE_CAREFUL)\
+	.diff_max   = (gci.lossy > 0 ? gci.lossy * 100 : 0),\
+	.alw_clear  = (gci.flags & GIF_WRITE_TRUNC_PADS),\
+	.careful    = (gci.flags & GIF_WRITE_CAREFUL)\
 }
 
 #if WITH_FILE_IO
@@ -656,14 +656,14 @@ save_compression_result(Gif_Writer *gwr, Gif_Image *gim, bool minimal)
 	gwr->length = 0;
 }
 
-void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo *gcinfo)
+void Gif_FullCompressImage(Gif_Stream *gst, Gif_Image *gim, Gif_CompressInfo gcinfo)
 {
 	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 
 	unsigned char min_code_bits;
 
-	bool minimal = (gcinfo->flags &  GIF_WRITE_MINIMAL);
-	bool optimal = (gcinfo->flags & (GIF_WRITE_OPTIMAL | GIF_WRITE_TRUNC_PADS)) == GIF_WRITE_OPTIMAL;
+	bool minimal = (gcinfo.flags & GIF_WRITE_MINIMAL);
+	bool optimal = (gcinfo.flags & GIF_OPTIZ_LVL3) && !(gcinfo.flags & GIF_WRITE_TRUNC_PADS);
 
 	init_dataWriter(&gwr);
 
@@ -953,9 +953,9 @@ write_gif(Gif_Writer *gwr, Gif_Stream *gst)
 
 #if WITH_FILE_IO
 unsigned int Gif_FullWriteFile(
-	Gif_Stream       *gst,
-	Gif_CompressInfo *gcinfo,
-	FILE             *file
+	Gif_Stream      *gst,
+	Gif_CompressInfo gcinfo,
+	FILE            *file
 ) {
 	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 
@@ -969,9 +969,9 @@ unsigned int Gif_FullWriteFile(
 #endif
 
 unsigned int Gif_FullWriteData(
-	Gif_Stream       *gst,
-	Gif_CompressInfo *gcinfo,
-	unsigned char   **out
+	Gif_Stream      *gst,
+	Gif_CompressInfo gcinfo,
+	unsigned char  **out
 ) {
 	Gif_Writer gwr = SET_WriterDefaults(gcinfo);
 

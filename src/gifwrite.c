@@ -66,7 +66,7 @@ struct Gif_Writer {
 
 	unsigned short diff_max;
 	unsigned global_size, local_size;
-	bool is_cleared, alw_clear, careful;
+	bool is_cleared, alw_clear, careful, drop_extra;
 
 	short errors;
 
@@ -90,6 +90,7 @@ struct Gif_Writer {
 	.is_cleared = false, .length = 0, .cap = 0, .errors = 0,\
 	.diff_max   = (gci.lossy > 0 ? gci.lossy * 100 : 0),\
 	.alw_clear  = (gci.flags & GIF_WRITE_TRUNC_PADS),\
+	.drop_extra = (gci.flags & GIF_WRITE_DROP_EXTRA),\
 	.careful    = (gci.flags & GIF_WRITE_CAREFUL)\
 }
 
@@ -896,13 +897,13 @@ write_generic_extension(Gif_Writer *gwr, Gif_Extension *gfex)
 }
 
 static bool
-incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim, const bool drop_extra)
+incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim)
 {
-	if (gim->extension_list && !drop_extra)
+	if (gim->extension_list && !gwr->drop_extra)
 		write_generic_extension(gwr, gim->extension_list);
-	if (gim->comment && !drop_extra)
+	if (gim->comment && !gwr->drop_extra)
 		write_comment_extensions(gwr, gim->comment);
-	if (gim->identifier && !drop_extra)
+	if (gim->identifier && !gwr->drop_extra)
 		write_name_extension(gwr, gim->identifier);
 	if (gim->transparent != -1 || gim->disposal || gim->delay)
 		write_graphic_control_extension(gwr, gim->disposal, gim->transparent, gim->delay);
@@ -910,7 +911,7 @@ incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim, const 
 }
 
 static bool
-write_gif(Gif_Writer *gwr, Gif_Stream *gst, const bool drop_extra)
+write_gif(Gif_Writer *gwr, Gif_Stream *gst)
 {
 	bool isgif89a = false;
 
@@ -934,12 +935,12 @@ write_gif(Gif_Writer *gwr, Gif_Stream *gst, const bool drop_extra)
 		write_netscape_loop_extension(gst->loopcount, gwr);
 
 	for (int i = 0; i < gst->nimages; i++)
-		if (!incremental_write_image(gwr, gst, gst->images[i], drop_extra))
+		if (!incremental_write_image(gwr, gst, gst->images[i]))
 			return false;
 
-	if (gst->end_extension_list && !drop_extra)
+	if (gst->end_extension_list && !gwr->drop_extra)
 		write_generic_extension(gwr, gst->end_extension_list);
-	if (gst->end_comment && !drop_extra)
+	if (gst->end_comment && !gwr->drop_extra)
 		write_comment_extensions(gwr, gst->end_comment);
 
 	writeUint8(gwr, ';');
@@ -977,7 +978,7 @@ unsigned int Gif_FullWriteData(
 
 	init_dataWriter(&gwr);
 
-	if (!write_gif(&gwr, gst, gcinfo.flags & GIF_WRITE_DROP_EXTRA)) {
+	if (!write_gif(&gwr, gst)) {
 		/* check errors */;
 	}
 	*out = gwr.data, gwr.data = NULL;

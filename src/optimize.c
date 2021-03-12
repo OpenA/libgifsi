@@ -366,8 +366,185 @@ static void finalize_optimizer(Gif_Stream *gfs, const bool drop_empty)
 #undef UINT_t
 #undef _Ex_
 
+/* unoptimizer functions */
+static void put_image_in_screen(
+	Gif_Image     *gim,
+	unsigned short data[],
+	unsigned short max_w,
+	unsigned short max_h,
+	unsigned short bg_color,
+	const    bool  is_bg
+) {
+	const    short transp = gim->transparent;
+	unsigned short
+		x, width  = gim->width,
+		y, height = gim->height;
+	unsigned left = gim->left,
+		   i, top = gim->top;
 
-/* the interface function! */
+	if (transp < 0) bg_color = GIF_COLOR_TRANSPARENT;
+	if (left + width > max_w) width  = max_w - left;
+	if (top + height > max_h) height = max_h - top;
+
+	for (y = 0; y < height; y++) {
+		i = (unsigned)max_w * (top + y) + left;
+		for (x = 0; x < width; x++, i++) {
+			unsigned char pix = gim->img[y][x];
+			if (is_bg)
+				data[i] = bg_color;
+			else if (pix != transp)
+				data[i] = pix;
+		}
+	}
+}
+
+static bool create_image_data(
+	Gif_Image     *gim,
+	unsigned short screen_data[],
+	const unsigned screen_size,
+	Gif_Colormap  *gcm,
+	unsigned char *new_data
+) {
+	bool have[257];
+	short c, transp = -1;
+	unsigned i;
+	Gif_Disposal disp = GD_None;
+
+	/* mark colors used opaquely in the image */
+	for (c = 0; c < 257; c++)
+		have[c] = false;
+	for (i = 0; i < screen_size; i++)
+		have[screen_data[i]] = true;
+
+	/* the new transparent color is a color unused in either */
+	if (have[GIF_COLOR_TRANSPARENT]) {
+		for (c = 0; c < 256 && transp < 0; c++) {
+			if (!have[c])
+				transp = c;
+		}
+		if (transp < 0)
+			return false;
+		if (transp >= gcm->ncol) {
+			if (!Gif_ReArray(gcm->col, Gif_Color, 256))
+				return false;
+			gcm->ncol = transp + 1;
+		}
+	}
+	/* map the wide image onto the new data */
+	for (i = 0; i < screen_size; i++) {
+		if (screen_data[i] == GIF_COLOR_TRANSPARENT) {
+			disp = GD_Asis;
+			new_data[i] = transp;
+		} else
+			new_data[i] = screen_data[i];
+	}
+	gim->transparent = transp;
+	gim->disposal = disp;
+	return true;
+}
+
+static bool unoptimize_image(
+	Gif_Stream    *gst,
+	Gif_Image     *gim,
+	unsigned short bg_color,
+	unsigned short screen_data[],
+	const unsigned screen_size,
+	const unsigned short max_w,
+	const unsigned short max_h,
+	char read_flags
+) {
+	const Gif_Disposal disp = gim->disposal;
+	unsigned char *new_data = Gif_NewArray(unsigned char, screen_size);
+
+	/* Oops! May need to uncompress it */
+	Gif_FullUncompressImage(gst, gim, read_flags);
+	Gif_ReleaseCompressedImage(gim);
+
+	bool ok = true;
+
+	if (disp == GD_Previous) {
+		unsigned short new_screen[screen_size];
+		memcpy(new_screen, screen_data, sizeof(unsigned short) * screen_size);
+		put_image_in_screen(gim, new_screen, max_w, max_h, bg_color, false);
+		ok = create_image_data(gim, new_screen, screen_size, gst->global, new_data);
+	} else {
+		put_image_in_screen(gim, screen_data, max_w, max_h, bg_color, false);
+		ok = create_image_data(gim, screen_data, screen_size, gst->global, new_data);
+	}
+	if (ok) {
+		if (disp == GD_Background)
+			put_image_in_screen(gim, screen_data, max_w, max_h, bg_color, true);
+		//put_background_in_screen(gst, gim, screen_data);
+		gim->left = gim->top = 0;
+		gim->width = max_w;
+		gim->height = max_h;
+		Gif_SetUncompressedImage(gim, false, new_data);
+	} else
+		Gif_DeleteArray(new_data);
+	return ok;
+}
+
+static bool
+no_more_transparency(Gif_Image *next, Gif_Image *curr)
+{
+	unsigned short x, y;
+	const short t1 = next->transparent,
+	            t2 = curr->transparent;
+	if (t1 < 0)
+		return true;
+	for (y = 0; y < next->height; y++) {
+		for (x = 0; x < next->width; x++) {
+			if (next->img[y][x] == t1 && curr->img[y][x] != t2)
+				return false;
+		}
+	}
+	return true;
+}
+
+
+/*
+  API Functions
+*/
+bool Gif_FullUnoptimize(Gif_Stream *gst, short unopt_flags)
+{
+	if (gst->nimages < 1)
+		return true;
+	if (gst->has_local_colors || !gst->global)
+		return false;
+
+	char flags  = unopt_flags & 0xFF;
+	bool simple = unopt_flags & GIF_UNOPT_SIMPLEST_DISPOSAL;
+
+	Gif_CalcScreenSize(gst, false);
+
+	unsigned short max_w = gst->screen_width,
+	               max_h = gst->screen_height;
+	unsigned i, n, screen_size = (unsigned)max_w * (unsigned)max_h;
+	unsigned short screen_data[screen_size], bg_color;
+
+	if (gst->images[0]->transparent < 0 && gst->background < gst->global->ncol)
+		bg_color = gst->background;
+	else
+		bg_color = GIF_COLOR_TRANSPARENT;
+
+	for (n = 0; n < screen_size; n++)
+		screen_data[n] = bg_color;
+	for (i = 0; i < gst->nimages; i++) {
+		if (!unoptimize_image(gst, gst->images[i], bg_color, screen_data, screen_size, max_w, max_h, flags))
+			return false;
+	}
+	/* set disposal based on use of transparency.
+		If (every transparent pixel in frame i is also transparent in frame
+		i - 1), then frame i - 1 gets disposal ASIS; otherwise, disposal
+		BACKGROUND. */
+	for (i = 0, n = 1; i < gst->nimages; i++, n++) {
+		gst->images[i]->disposal = simple && (
+			n == gst->nimages || no_more_transparency(gst->images[n], gst->images[i])
+		) ? GD_None : GD_Background;
+	}
+	return true;
+}
+
 void Gif_FullOptimize(Gif_Stream *gfs, Gif_CompressInfo gcinfo)
 {
 	unsigned bg_color;

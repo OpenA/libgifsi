@@ -826,7 +826,7 @@ input_stream(const char *name)
   def_frame = old_def_frame;
 
   if (unoptimizing)
-    if (!Gif_FullUnoptimize(gfs, GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL)) {
+    if (!Gif_FullUnoptimize(gfs, GIF_UNOPT_SIMPLEST_DISPOSAL)) {
       static int context = 0;
       if (!context) {
         lwarning(name, "GIF too complex to unoptimize\n"

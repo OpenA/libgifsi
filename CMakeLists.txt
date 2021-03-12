@@ -65,7 +65,6 @@ endif()
 add_library(libgifsi ${gifsi_library_type}
   src/giffunc.c
   src/gifread.c
-  src/gifunopt.c
   src/gifwrite.c
   src/optimize.c
   src/quantize.c

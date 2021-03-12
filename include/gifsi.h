@@ -31,9 +31,9 @@ extern "C" {
 # include <stdio.h>
 #endif
 
-#define GIF_UNOPTIMIZE_SIMPLEST_DISPOSAL 1
 #define GIF_MAX_SCREEN_WIDTH  0xFFFF
 #define GIF_MAX_SCREEN_HEIGHT 0xFFFF
+#define GIF_COLOR_TRANSPARENT 0x100
 
 #define NO_COPY_GIF_IMAGES     0x01
 #define NO_COPY_GIF_COLORMAP   0x02
@@ -290,10 +290,12 @@ typedef struct {
 #define GIF_OPTIZ_SAVE_UNCOMP 0x1000
 #define GIF_OPTIZ_KEEP_EMPTY  0x2000
 
+#define GIF_UNOPT_SIMPLEST_DISPOSAL 0x100
+
 #define Gif_Unoptimize(gst) Gif_FullUnoptimize(gst, 0)
 #define Gif_Optimize(gst)   Gif_FullOptimize(gst, (Gif_CompressInfo){GIF_OPTIZ_LVL1,0})
 
-bool Gif_FullUnoptimize(Gif_Stream *, char unopt_flags);
+bool Gif_FullUnoptimize(Gif_Stream *, short unopt_flags);
 void Gif_FullOptimize  (Gif_Stream *, Gif_CompressInfo);
 
 #define Gif_UncompressImage(gst,gim) Gif_FullUncompressImage(gst, gim, 0)

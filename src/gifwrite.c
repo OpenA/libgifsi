@@ -896,13 +896,13 @@ write_generic_extension(Gif_Writer *gwr, Gif_Extension *gfex)
 }
 
 static bool
-incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim)
+incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim, const bool drop_extra)
 {
-	if (gim->extension_list)
+	if (gim->extension_list && !drop_extra)
 		write_generic_extension(gwr, gim->extension_list);
-	if (gim->comment)
+	if (gim->comment && !drop_extra)
 		write_comment_extensions(gwr, gim->comment);
-	if (gim->identifier)
+	if (gim->identifier && !drop_extra)
 		write_name_extension(gwr, gim->identifier);
 	if (gim->transparent != -1 || gim->disposal || gim->delay)
 		write_graphic_control_extension(gwr, gim->disposal, gim->transparent, gim->delay);
@@ -910,7 +910,7 @@ incremental_write_image(Gif_Writer *gwr, Gif_Stream *gst, Gif_Image *gim)
 }
 
 static bool
-write_gif(Gif_Writer *gwr, Gif_Stream *gst)
+write_gif(Gif_Writer *gwr, Gif_Stream *gst, const bool drop_extra)
 {
 	bool isgif89a = false;
 
@@ -934,12 +934,12 @@ write_gif(Gif_Writer *gwr, Gif_Stream *gst)
 		write_netscape_loop_extension(gst->loopcount, gwr);
 
 	for (int i = 0; i < gst->nimages; i++)
-		if (!incremental_write_image(gwr, gst, gst->images[i]))
+		if (!incremental_write_image(gwr, gst, gst->images[i], drop_extra))
 			return false;
 
-	if (gst->end_extension_list)
+	if (gst->end_extension_list && !drop_extra)
 		write_generic_extension(gwr, gst->end_extension_list);
-	if (gst->end_comment)
+	if (gst->end_comment && !drop_extra)
 		write_comment_extensions(gwr, gst->end_comment);
 
 	writeUint8(gwr, ';');
@@ -977,7 +977,7 @@ unsigned int Gif_FullWriteData(
 
 	init_dataWriter(&gwr);
 
-	if (!write_gif(&gwr, gst)) {
+	if (!write_gif(&gwr, gst, gcinfo.flags & GIF_WRITE_DROP_EXTRA)) {
 		/* check errors */;
 	}
 	*out = gwr.data, gwr.data = NULL;

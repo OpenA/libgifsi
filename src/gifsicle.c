@@ -908,37 +908,39 @@ set_new_fixed_colormap(const char *name)
 static void
 do_colormap_change(Gif_Stream *gfs)
 {
-  Gif_SetDitherPlan(&quantz_tabs,
-      active_output_data.dither_type,
-      active_output_data.dither_data[0],
-      active_output_data.dither_data[1],
-      active_output_data.dither_data[2]);
-
-  if (active_output_data.colormap_fixed)
-      Gif_FullQuantizeColors(gfs, &quantz_tabs, active_output_data.colormap_fixed, gif_write_info);
-
+  if (active_output_data.colormap_fixed) {
+    quantz_tabs.div_colmap = Gif_New(Gif_Colormap);
+    Gif_CopyColormap(quantz_tabs.div_colmap, active_output_data.colormap_fixed);
+    Gif_FullQuantizeColors(gfs, &quantz_tabs, gif_write_info);
+  }
   if (active_output_data.colormap_size > 0) {
 
     char cm_alg = active_output_data.colormap_algorithm;
     unsigned ncols = active_output_data.colormap_size;
     int has_fixed_cm = active_output_data.colormap_fixed != NULL;
 
-    Gif_Colormap *new_cm;
-
     if (ncols < 2 || ncols > 256)
       fatal_error("adaptive palette size must be between 2 and 256");
 
-    if (cm_alg != CD_Flat && cm_alg != CD_Blend && cm_alg != CD_MedianCut) {
-        Gif_FreeColorTransform(&quantz_tabs);
-        fatal_error("wrong colormap algorithm");
-    }
-    new_cm = Gif_NewDiverseColormap(gfs, &quantz_tabs, cm_alg, &ncols);
+    if (cm_alg != CD_Flat && cm_alg != CD_Blend && cm_alg != CD_MedianCut)
+      fatal_error("wrong colormap algorithm");
+
+    Gif_SetDitherPlan(&quantz_tabs,
+      active_output_data.dither_type,
+      active_output_data.dither_data[0],
+      active_output_data.dither_data[1],
+      active_output_data.dither_data[2]);
+
+    Gif_SetGamma(&quantz_tabs,
+      active_output_data.colormap_gamma_type,
+      active_output_data.colormap_gamma);
+
+    ncols = Gif_MakeDiverseColormap(gfs, &quantz_tabs, cm_alg, ncols);
 
     if (ncols <= active_output_data.colormap_size && !has_fixed_cm)
       warning(1, "trivial adaptive palette (only %d colors in source)", ncols);
     if (ncols > active_output_data.colormap_size || has_fixed_cm || gfs->has_local_colors)
-      Gif_FullQuantizeColors(gfs, &quantz_tabs, new_cm, gif_write_info);
-    Gif_DeleteColormap(new_cm);
+      Gif_FullQuantizeColors(gfs, &quantz_tabs, gif_write_info);
   }
 }
 
@@ -1016,10 +1018,6 @@ merge_and_write_frames(const char *outfile, int f1, int f2)
       h = active_output_data.resize_height;
     }
     Gif_InitColorTransform(&quantz_tabs);
-
-    if (active_output_data.colormap_fixed || active_output_data.colormap_size > 0)
-      Gif_SetGamma(&quantz_tabs, active_output_data.colormap_gamma_type,
-                        active_output_data.colormap_gamma);
 
     if (active_output_data.scaling != GT_SCALING_NONE)
       resize_stream(out, w, h, active_output_data.resize_flags,

@@ -334,6 +334,7 @@ typedef enum Gif_Gamma  Gif_Gamma;
 
 struct Gif_ColorTransform {
 
+	Gif_Colormap *div_colmap;
 	Gif_Dither dither_plan;
 	Gif_Gamma  gamma_type;
 
@@ -358,8 +359,10 @@ typedef enum {
 	CD_MedianCut
 } Gif_CDiversity;
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *, Gif_ColorTransform *, Gif_CDiversity, unsigned *ncol);
-void          Gif_FullQuantizeColors(Gif_Stream *, Gif_ColorTransform *, Gif_Colormap *new_colmap,  Gif_CompressInfo);
+#define Gif_QuantizeColors(gst,cot) Gif_FullQuantizeColors(gst, cot, (Gif_CompressInfo){0,0});
+
+unsigned Gif_MakeDiverseColormap(Gif_Stream *, Gif_ColorTransform *, Gif_CDiversity, unsigned colors);
+void     Gif_FullQuantizeColors (Gif_Stream *, Gif_ColorTransform *, Gif_CompressInfo);
 
 
 

@@ -416,10 +416,10 @@ static void colormap_diversity(kchist *kch, Gif_Colormap *gfcm, Gif_ColorTransfo
 	kcdiversity_cleanup(&div);
 }
 
-Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_CDiversity alg, unsigned *ncol)
+unsigned Gif_MakeDiverseColormap(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_CDiversity alg, unsigned adapt_size)
 {
 	Gif_Colormap *gfcm;
-	unsigned ntransp, adapt_size = *ncol;
+	unsigned ntransp, ncol;
 	kchist kch;
 
 	/* set up the histogram */
@@ -438,8 +438,8 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_ColorTransform *cot, G
 	if (adapt_size > 2 && adapt_size < kch.n && kch.n <= 265 && ntransp > 0)
 		adapt_size--;
 
-	*ncol = kch.n;
-	Gif_NewColormap(gfcm, adapt_size);
+	ncol = kch.n;
+	Gif_NewColormap(cot->div_colmap = gfcm, adapt_size);
 
 	if (alg == CD_MedianCut) {
 		colormap_median_cut(&kch, gfcm, cot);
@@ -448,7 +448,7 @@ Gif_Colormap *Gif_NewDiverseColormap(Gif_Stream *gfs, Gif_ColorTransform *cot, G
 			alg == CD_Blend && adapt_size >= 4));
 	}
 	kchist_cleanup(&kch);
-	return gfcm;
+	return ncol;
 }
 
 void colormap_image_posterize(
@@ -1026,25 +1026,37 @@ static bool try_assign_transparency(
 }
 
 
-void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colormap *new_colmap, Gif_CompressInfo gcinfo)
+void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_CompressInfo gcinfo)
 {
 	kd3_tree kd3;
-	Gif_Color *new_col = new_colmap->col;
-	int i, j, new_ncol = new_colmap->ncol;
-	bool compress_new_cm = true, new_gray = true;
+	Gif_Color *new_col;
+	int i, j, new_ncol;
 
-	Gif_Colormap  *gst_cm = gfs->global;
+	bool compress_new_cm = true,
+	            new_gray = true;
+
+	Gif_Colormap  *gst_cm = gfs->global,
+	              *new_cm = cot->div_colmap;
 	unsigned short gst_bg = gfs->background;
 
+	if (!new_cm) {
+		unsigned ntransp;
+		kchist kch;
+		kchist_make(&kch, gfs, &ntransp, cot);
+		Gif_NewColormap(new_cm, (new_ncol = kch.n));
+		colormap_diversity(&kch, new_cm, cot, false);
+		new_col = new_cm->col;
+	} else
 	/* make sure colormap has enough space */
-	if (new_colmap->capacity < 256) {
-		Gif_Color *x = Gif_NewArray(Gif_Color, 256);
-		memcpy(x, new_col, sizeof(Gif_Color) * new_ncol);
-		Gif_DeleteArray(new_col);
-		new_colmap->col = new_col = x;
-		new_colmap->capacity = 256;
+	if (new_cm->capacity < 256) {
+		new_col = Gif_NewArray(Gif_Color, new_cm->capacity = 256);
+		new_ncol = new_cm->ncol;
+		memcpy(new_col, new_cm->col, sizeof(Gif_Color) * new_ncol);
+		Gif_FreeArray(new_cm->col), new_cm->col = new_col;
+	} else {
+		new_col  = new_cm->col;
+		new_ncol = new_cm->ncol;
 	}
-	assert(new_colmap->capacity >= 256);
 
 	/* new_col[j].pixel == number of pixels with color j in the new image. */
 	for (j = 0; j < 256; j++)
@@ -1058,7 +1070,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colorm
 			break;
 		}
 	}
-	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_colmap, cot);
+	kd3_init_build(&kd3, new_gray ? kc_luminance_transform : NULL, new_cm, cot);
 
 	_dith_work_fn do_DitherTransform = (
 		cot->dither_plan == DiP_Posterize      ? colormap_image_posterize :
@@ -1077,7 +1089,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colorm
 			unsigned histogram[256];
 
 			/* Initialize colors */
-			unmark_pixels(new_colmap);
+			unmark_pixels(new_cm);
 			unmark_pixels(gfcm);
 
 			if (was_compress)
@@ -1088,7 +1100,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colorm
 				for (j = 0; j < 256; j++)
 					histogram[j] = 0;
 				do_DitherTransform(gfi, new_data, gfcm, &kd3, histogram, cot);
-			} while (try_assign_transparency(gfi, gfcm, new_data, new_colmap, &new_ncol,
+			} while (try_assign_transparency(gfi, gfcm, new_data, new_cm, &new_ncol,
 											 &kd3, histogram));
 
 			/* version 1.28 bug fix: release any compressed version or it'll cause bad images */
@@ -1121,7 +1133,7 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colorm
   /* Set new_colmap->ncol from new_ncol. We didn't update new_colmap->ncol before so
      the closest-color algorithms wouldn't see any new transparent colors.
      That way added transparent colors were only used for transparency. */
-	new_colmap->ncol = new_ncol;
+	new_cm->ncol = new_ncol;
 
 	/* change the background. I hate the background by now */
 	if (gst_cm && gst_bg < gst_cm->ncol && (!gfs->nimages || gfs->images[0]->transparent < 0)) {
@@ -1139,8 +1151,8 @@ void Gif_FullQuantizeColors(Gif_Stream *gfs, Gif_ColorTransform *cot, Gif_Colorm
 	/* We may have used only a subset of the colors in new_colmap. We try to store
 	   only that subset, just as if we'd piped the output of 'gifsicle
 	   --use-colormap=X' through 'gifsicle' another time. */
-	if (Gif_CopyColormap(gfs->global = Gif_New(Gif_Colormap), new_colmap))
-		unmark_pixels(gfs->global);
+	unmark_pixels((gfs->global = new_cm));
+	cot->div_colmap = NULL;
 
 	if (compress_new_cm) {
 		/* only bother to recompress if we'll get anything out of it */

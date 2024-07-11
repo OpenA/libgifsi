@@ -1,0 +1,18 @@
+{
+	"configurations": [
+		{
+			"name": "Linux",
+			"includePath": [
+				"/usr/include/**",
+				"/usr/local/include/**",
+				"${workspaceFolder}"
+			],
+			"defines": ["WITH_FILE_IO", "WITH_GIF"],
+			"compilerPath": "/usr/bin/gcc",
+			"cStandard": "c11",
+			"cppStandard": "c++11",
+			"intelliSenseMode": "${default}"
+		}
+	],
+	"version": 4
+}

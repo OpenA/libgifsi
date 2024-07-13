@@ -403,10 +403,12 @@ int        Gif_IndexOfColor(Gif_Color * arr, const int len, const Gif_Color  col
 
 #ifdef GIF_DEBUGGING
 # include <stdarg.h>
-# define GIF_DEBUG(x) Gif_Debug x
-void     Gif_Debug(char *x, ...);
+# define GIF_DEBUG(x) (void)Gif_Debug x
+# define GIF_DLOG(x)  (void)puts(x)
+void Gif_Debug(char *x, ...);
 #else
 #define GIF_DEBUG(x)
+#define GIF_DLOG(x)
 #endif
 
 /* Legacy */

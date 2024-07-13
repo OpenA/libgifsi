@@ -236,6 +236,11 @@ message("")
 #
 # Compiler settings
 #
+option(ENABLE_DEBUG "Enable debug logging" OFF)
+if(ENABLE_DEBUG)
+  add_compile_definitions(GIF_DEBUGGING=1)
+endif()
+
 add_compile_definitions(HAVE_CONFIG_H=1)
 
 if(MSVC)

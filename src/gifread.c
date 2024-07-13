@@ -9,32 +9,30 @@
 
 #include <gifsi.h>
 
-#define READ_CODE_MAX    0x1000
-#define READ_CODE_BITS   12
-#define READ_BUFFER_SIZE 255
+#define READ_CODE_MAX 4096
+#define MAX_CODE_BITS 12
+#define READ_BUF_SIZE 255
 
-typedef unsigned short Code_t;
+#define CLEAR_CODE (1 << min_code_size)
+#define   EOI_CODE (1 << min_code_size | 1)
+#define   BPP_SIZE (1 +  min_code_size)
+
+typedef struct Code {
+	unsigned suffix:8, prefix:12, nbits:12;
+} Code_t;
 
 typedef struct Gif_Reader Gif_Reader;
 typedef struct GReadContext GReadContext;
 
 struct GReadContext {
-
-	Gif_Stream    *stream;
-
-	Code_t         prefix[READ_CODE_MAX];
-	unsigned char  suffix[READ_CODE_MAX];
-	unsigned short length[READ_CODE_MAX];
-
-	unsigned short width, height;
-	unsigned char *image, *maximage;
-	unsigned int   index, decodepos;
+	Gif_Stream *stream;
+	unsigned int index;
 	unsigned short errors, warnings;
 };
 
 #define SET_GRCntxDefaults(gst) {\
+	.stream = gst, .index  = 0,\
 	.errors = 0, .warnings = 0,\
-	.index  = 0, .stream   = gst\
 }
 
 struct Gif_Reader {
@@ -223,101 +221,62 @@ emit_read_error(GReadContext *gctx, Gif_eLevel flag, const char *txt)
 	}
 }
 
-static unsigned char
-one_code(GReadContext *gctx, Code_t code)
+static inline unsigned char
+one_code(const Code_t dec[], int code, int ipos, unsigned char *img, const int imax)
 {
-	int lastsuffix = 0;
-	int codelength = gctx->length[code];
+	int s = 0,
+		p = code, i,
+		l = dec[code].nbits;
 
-	unsigned char *suffx = gctx->suffix;
-	unsigned char *ptr   = gctx->image + (gctx->decodepos += codelength);
-	Code_t        *prefx = gctx->prefix;
-
-	while ((codelength--) > 0) {
-		lastsuffix = suffx[code];
-		code       = prefx[code];
-		if (--ptr < gctx->maximage)
-			 *ptr = lastsuffix;
+	for(i = l; i > 0; i--) {
+		s = dec[p].suffix;
+		p = dec[p].prefix;
+		if ((ipos+i-1) < imax)
+			img[(ipos+i-1)] = s;
 	}
 	/* return the first pixel in the code, which, since we walked backwards
 	   through the code, was the last suffix we processed. */
-	return lastsuffix;
-}
-
-static bool
-read_image_block(Gif_Reader *grr, unsigned char *buffer, int *bit_pos_store,
-                 int *bit_len_store, int bits_needed)
-{
-	int bit_position = *bit_pos_store;
-	int bit_length   = *bit_len_store;
-	unsigned char block_len;
-
-	while (bit_position + bits_needed > bit_length) {
-		/* Read in the next data block. */
-		if (bit_position >= 8) {
-			/* Need to shift down the upper, unused part of 'buffer' */
-			int i = bit_position / 8;
-			buffer[0] = buffer[i];
-			buffer[1] = buffer[i + 1];
-			bit_position -= i * 8;
-			bit_length   -= i * 8;
-		}
-		block_len = readUint8(grr);
-		GIF_DEBUG(("\nimage_block(%d) ", block_len));
-		if (!block_len) return false;
-		readChunk(grr, buffer + bit_length / 8, block_len);
-		bit_length += block_len * 8;
-	}
-	*bit_pos_store = bit_position;
-	*bit_len_store = bit_length;
-	return true;
+	return l ? s : 0;
 }
 
 static void
-read_image_data(GReadContext *gctx, Gif_Reader *grr)
+read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char*image, const int image_len)
 {
-	/* we need a bit more than READ_BUFFER_SIZE in case a single code is split
+	/* we need a bit more than READ_BUF_SIZE in case a single code is split
 		across blocks */
-	unsigned char buffer[READ_BUFFER_SIZE + 5];
-	unsigned int  accum;
-	int i;
+	unsigned char dec_pix, buf[READ_BUF_SIZE + 5];
+	unsigned int  dec_pos, accm;
 	
-	int bits_needed  = 0,
-	    bit_position = 0,
-	    bit_length   = 0;
+	struct Code dec[READ_CODE_MAX];
 
-	Code_t code, old_code, next_code, eoi_code, clear_code;
+	int i, next_code, curr_code, bit_pos = 0,
+		n, prev_code, bits_need, bit_len = 0;
 
-#define CUR_BUMP_CODE ( 1 << bits_needed)
-#define CUR_CODE_MASK ((1 << bits_needed) - 1)
+#define BUMP_CODE   (1 << bits_need)
+#define CODE_GET(m) (m >> (bit_pos % 8) & (BUMP_CODE - 1))
 
 	int min_code_size = readUint8(grr);
-
-	GIF_DEBUG(("\n\nmin_code_size(%d) ", min_code_size));
-
-	if (min_code_size >= READ_CODE_BITS) {
+	if (min_code_size >= MAX_CODE_BITS) {
 		emit_read_error(gctx, GE_Error, "image corrupted, min_code_size too big");
-		min_code_size = READ_CODE_BITS - 1;
+		min_code_size = MAX_CODE_BITS - 1;
 	} else if (min_code_size < 2) {
 		emit_read_error(gctx, GE_Error, "image corrupted, min_code_size too small");
 		min_code_size = 2;
 	}
-	bits_needed = 1 +  min_code_size;
-	clear_code  = 1 << min_code_size;
-	/* */ code  = gctx->decodepos = 0;
+	bits_need = BPP_SIZE;
+	next_code = EOI_CODE;
+	curr_code = CLEAR_CODE; dec_pos = 0;
 
-	for (; code < clear_code; code++) {
-		gctx->prefix[code] = 49428;
-		gctx->suffix[code] = (unsigned char)code;
-		gctx->length[code] = 1;
+	for (i = 0; i < READ_CODE_MAX; i++) {
+		dec[i].prefix = 0xC11;
+		dec[i].suffix = (unsigned char)i;
+		dec[i].nbits  = 1;
 	}
-	next_code = eoi_code = clear_code + 1;
+	GIF_DEBUG(("\n\nmin_code_size(%d) ", min_code_size));
 
 	/* Thus the 'Read in the next data block.' code below will be invoked on the
 	   first time through: exactly right! */
 	while (1) {
-
-		old_code = code;
 
 	/* GET A CODE INTO THE 'code' VARIABLE.
 	*
@@ -328,32 +287,42 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr)
 	* <naughton@wind.sun.com>'s GIF-reading code, which does the same thing.
 	* His code distributed as part of XV in xvgif.c. */
 
-		if (bit_position + bits_needed > bit_length)
-	/* Read in the next data block. */
-		if (!read_image_block(grr, buffer, &bit_position, &bit_length, bits_needed))
-			goto zero_length_block;
+		for (; (bit_pos + bits_need) > bit_len; bit_len += n * 8) {
+			/* Read in the next data block. */
+			if (bit_pos >= 8) {
+				/* Need to shift down the upper, unused part of 'buffer' */
+				i = bit_pos / 8;
+				buf[0] = buf[i];
+				buf[1] = buf[i+1];
+				bit_pos -= i * 8;
+				bit_len -= i * 8;
+			}
+			if ((n = readUint8(grr)))
+				readChunk(grr, &buf[bit_len / 8], n);
+			GIF_DEBUG(("\nimage_block(%d) ", n));
+			if (!n) goto zero_length_block;
+		}
+		i = bit_pos / 8;
+		accm  = buf[i],
+		accm |= buf[i+1] << 8;
+		if (bits_need >= 8)
+			accm |= buf[i+2] << 16;
 
-		i = bit_position / 8;
-		accum = buffer[i] + (buffer[i + 1] << 8);
-		if (bits_needed >= 8)
-			accum |= (buffer[i+2]) << 16;
-		code = (Code_t)((accum >> (bit_position % 8)) & CUR_CODE_MASK);
-		bit_position += bits_needed;
-
-		GIF_DEBUG(("%d ", code));
+		prev_code = curr_code,
+		curr_code = CODE_GET(accm);
+		bit_pos  += bits_need;
 
 	/* CHECK FOR SPECIAL OR BAD CODES: clear_code, eoi_code, or a code that is
 	* too large. */
-		if (code == clear_code) {
-			GIF_DEBUG(("clear "));
-			bits_needed = min_code_size + 1;
-			next_code   = eoi_code;
+		if (curr_code == CLEAR_CODE) {
+			GIF_DLOG("CLEAR ");
+			bits_need = BPP_SIZE;
+			next_code = EOI_CODE;
 			continue;
-
-		} else if (code == eoi_code) {
+		} else if (curr_code == EOI_CODE) {
+			GIF_DLOG("EOI\n");
 			break;
-
-		} else if (code > next_code && next_code && next_code != clear_code) {
+		} else if (curr_code > next_code && next_code && next_code != CLEAR_CODE) {
 	/* code > next_code: a (hopefully recoverable) error.
 
 	* Bug fix, 5/27: Do this even if old_code == clear_code, and set code
@@ -368,7 +337,7 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr)
 				emit_read_error(gctx, GE_Error, "image corrupted, code out of range");
 			else if (gctx->errors == 20)
 				emit_read_error(gctx, GE_Error, "(not reporting more errors)");
-			code = 0;
+			curr_code = 0;
 		}
 	/* PROCESS THE CURRENT CODE and define the next code. If no meaningful
 	* next code should be defined, then we have set next_code to either
@@ -377,50 +346,51 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr)
 
 	/* *First,* set up the prefix and length for the next code
 	 (in case code == next_code). */
-		gctx->prefix[next_code] = old_code;
-		gctx->length[next_code] = gctx->length[old_code] + 1;
+		dec[next_code].prefix = prev_code;
+		dec[next_code].nbits  = dec[prev_code].nbits + 1;
+
+		GIF_DEBUG(("%d ", dec[prev_code].nbits));
 
 	/* Use one_code to process code. It's nice that it returns the first
 	 pixel in code: that's what we need. */
-		gctx->suffix[next_code] = one_code(gctx, code);
+		dec_pix  = one_code(dec, curr_code, dec_pos, image, image_len),
+		dec_pos += dec[curr_code].nbits;
+
+		dec[next_code].suffix = dec_pix;
 
 	/* Special processing if code == next_code: we didn't know code's final
 	* suffix when we called one_code, but we do now.
 	* 7.Mar.2014 -- Avoid error if image has zero width/height. */
-		if (code == next_code && gctx->image + gctx->decodepos <= gctx->maximage)
-			gctx->image[gctx->decodepos - 1] = gctx->suffix[next_code];
+		if (curr_code == next_code && dec_pos <= image_len)
+			image[dec_pos - 1] = dec_pix;
 
 	/* Increment next_code except for the 'clear_code' special case (that's
 	 when we're reading at the end of a GIF) */
-		if (next_code != clear_code) {
-			if (++next_code == CUR_BUMP_CODE) {
-				if (bits_needed < READ_CODE_BITS)
-					bits_needed++;
-				else
-					next_code = clear_code;
-			}
+		if (next_code != CLEAR_CODE && ++next_code == BUMP_CODE) {
+			if (bits_need < MAX_CODE_BITS)
+				bits_need++;
+			else
+				next_code = CLEAR_CODE;
 		}
 	}
 
 	/* read blocks until zero-length reached. */
 	while ((i = readUint8(grr)) > 0) {
-		readChunk(grr, buffer, i);
+		readChunk(grr, buf, i);
 		GIF_DEBUG(("\nafter_image(%d)\n", i));
 	}
 
 	/* zero-length block reached. */
 	zero_length_block: {
-		long delta = (long)(gctx->maximage - gctx->image) - (long)gctx->decodepos;
-		char buf[READ_BUFFER_SIZE];
+		int delta = image_len - dec_pos;
 		if (delta > 0) {
-			sprintf(buf, "missing %ld %s of image data", delta,
-					delta == 1 ? "pixel" : "pixels");
+			sprintf(buf, "missing %i pixel(s) of image data", delta);
 			emit_read_error(gctx, GE_Error, buf);
-			memset(&gctx->image[gctx->decodepos], 0, delta);
+			memset(&image[dec_pos], 0, delta);
 		} else if (delta < -1) {
 			/* One pixel of superfluous data is OK; that could be the
 				code == next_code case. */
-			sprintf(buf, "%ld superfluous pixels of image data", -delta);
+			sprintf(buf, "%i superfluous pixels of image data", -delta);
 			emit_read_error(gctx, GE_Warning, buf);
 		}
 	}
@@ -469,13 +439,10 @@ uncompress_image(GReadContext *gctx, Gif_Image *gfi, Gif_Reader *grr)
 {
 	if (!Gif_CreateUncompressedImage(gfi, gfi->interlace))
 		return false;
-	gctx->width    = gfi->width;
-	gctx->height   = gfi->height;
-	gctx->image    = gfi->image_data;
-	gctx->maximage = gfi->image_data + (unsigned)gfi->width * (unsigned)gfi->height;
-	int old_errors = gctx->errors;
-	read_image_data(gctx, grr);
-	gfi->compressed_errors = gctx->errors - old_errors;
+	int img_len = (int)gfi->width * (int)gfi->height,
+		old_err = gctx->errors;
+	read_image_data(gctx, grr, gfi->image_data, img_len);
+	gfi->compressed_errors = gctx->errors - old_err;
 	return true;
 }
 
@@ -641,7 +608,7 @@ read_unknown_extension(Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi,
 static void
 read_application_extension(GReadContext *gctx, Gif_Reader *grr, Gif_Stream *gfs, Gif_Image *gfi)
 {
-	unsigned char buf[READ_BUFFER_SIZE + 1];
+	unsigned char buf[READ_BUF_SIZE + 1];
 	unsigned char len = readUint8(grr);
 
 	readChunk(grr, buf, len);
@@ -691,7 +658,7 @@ read_gif(Gif_Reader *grr, Gif_Stream *gst, char flags)
 
 	GReadContext gctx = SET_GRCntxDefaults(gst);
 
-	GIF_DEBUG("read magic `GIF`");
+	GIF_DLOG("read magic `GIF`");
 	if (readUint8(grr) != 'G' ||
 		readUint8(grr) != 'I' ||
 		readUint8(grr) != 'F') {
@@ -727,7 +694,7 @@ read_gif(Gif_Reader *grr, Gif_Stream *gst, char flags)
 
 		case ';': /* terminator */
 			byte = readUint8(grr);
-			GIF_DEBUG(("term\n"));
+			GIF_DLOG("term\n");
 			goto done;
 
 		case '!': /* extension */
@@ -758,7 +725,7 @@ read_gif(Gif_Reader *grr, Gif_Stream *gst, char flags)
 			break;
 		default:
 			if (!unknown_block_type) {
-				char buf[READ_BUFFER_SIZE];
+				char buf[READ_BUF_SIZE];
 				sprintf(buf, "unknown block type %d at file offset %u", byte, grr->pos - 1);
 				emit_read_error(&gctx, GE_Error, buf);
 			}

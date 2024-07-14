@@ -250,7 +250,7 @@ static inline int one_code(
 	dec[nc].prefix = pc;
 	dec[nc].nbits  = k;
 
-	GIF_DEBUG(("%i ", l));
+	//GIF_DEBUG(("%i ", l));
 
 	return l;
 }

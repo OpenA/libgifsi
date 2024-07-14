@@ -419,7 +419,7 @@ write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs, Gif_Image *gfi,
 
 	cur_code_bits = min_code_bits + 1;
 	/* next_code set by first runthrough of output clear_code */
-	GIF_DEBUG(("clear(%d) eoi(%d) bits(%d) ", CLEAR_CODE, EOI_CODE, cur_code_bits));
+	GIF_DEBUG(("clear(%d) eoi(%d) bits(%d)\n", CLEAR_CODE, EOI_CODE, cur_code_bits));
 
 	work_node = NULL;
 	output_code = CLEAR_CODE;
@@ -529,7 +529,7 @@ write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs, Gif_Image *gfi,
 				bool do_clear = _DO_CLEAR(1,0);
 
 				if (do_clear) {
-					GIF_DEBUG(("rewind %u pixels/%d bits", pos + 1 - clear_pos, bufpos + cur_code_bits - clear_bufpos));
+					GIF_DEBUG(("rewind %u pixels/%d bits\n", pos + 1 - clear_pos, bufpos + cur_code_bits - clear_bufpos));
 					output_code = CLEAR_CODE;
 					pos = clear_pos;
 					bufpos = clear_bufpos;
@@ -565,7 +565,7 @@ write_compressed_data(Gif_Writer *gwr, Gif_Stream *gfs, Gif_Image *gfi,
 				bool do_clear = _DO_CLEAR(0,1);
 
 				if (do_clear) {
-					GIF_DEBUG(("rewind %u pixels/%d bits ", pos - clear_pos, bufpos + cur_code_bits - clear_bufpos));
+					GIF_DEBUG(("rewind %u pixels/%d bits\n", pos - clear_pos, bufpos + cur_code_bits - clear_bufpos));
 					output_code = CLEAR_CODE;
 					pos = clear_pos;
 					imageline = gif_imageline(gfi, pos);

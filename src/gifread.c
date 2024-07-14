@@ -17,9 +17,9 @@
 #define   EOI_CODE (1 << min_code_size | 1)
 #define   BPP_SIZE (1 +  min_code_size)
 
-typedef struct Code {
+struct Code {
 	unsigned suffix:8, prefix:12, nbits:12;
-} Code_t;
+};
 
 typedef struct Gif_Reader Gif_Reader;
 typedef struct GReadContext GReadContext;
@@ -221,26 +221,42 @@ emit_read_error(GReadContext *gctx, Gif_eLevel flag, const char *txt)
 	}
 }
 
-static inline unsigned char
-one_code(const Code_t dec[], int code, int ipos, unsigned char *img, const int imax)
-{
-	int s = 0,
-		p = code, i,
-		l = dec[code].nbits;
+/* returns the count of decoding bits
+ * for increase decode position. */
+static inline int one_code(
+	struct Code  dec[], int dpos, int pc,
+	unsigned char *img, int imax, int cc, int nc
+) {
+	int e = dec[cc].suffix, s = e,
+		p = dec[cc].prefix, i = 0,
+		l = dec[cc].nbits , k = dec[pc].nbits + 1;
+	// in curr_code == next_code we need prev_code prefix/nbits
+	if (cc == nc)
+		p = pc, l = k;
 
-	for(i = l; i > 0; i--) {
-		s = dec[p].suffix;
+	for(i = l-2; i >= 0; i--) {
+		s = dec[p].suffix,
 		p = dec[p].prefix;
-		if ((ipos+i-1) < imax)
-			img[(ipos+i-1)] = s;
+		if ((dpos+i) < imax)
+			img[(dpos+i)] = s;
 	}
-	/* return the first pixel in the code, which, since we walked backwards
-	   through the code, was the last suffix we processed. */
-	return l ? s : 0;
+	// we don't know code's final suffix so we store 
+	// all possible values and conditionally stored one of then
+	if ((dpos+l-1) < imax)
+		img[(dpos+l-1)] = (cc == nc ? (l ? s : 0) : e);
+	// set up the prefix and nbits for the next code
+	// i think it would be stored like a single word
+	dec[nc].suffix = (l ? s : 0);
+	dec[nc].prefix = pc;
+	dec[nc].nbits  = k;
+
+	GIF_DEBUG(("%i ", l));
+
+	return l;
 }
 
 static void
-read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char*image, const int image_len)
+read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char *img, const int img_len)
 {
 	/* we need a bit more than READ_BUF_SIZE in case a single code is split
 		across blocks */
@@ -278,7 +294,7 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char*image, const 
 	   first time through: exactly right! */
 	while (1) {
 
-	/* GET A CODE INTO THE 'code' VARIABLE.
+	/* GET A CODE INTO THE 'curr_code' VARIABLE.
 	*
 	* 9.Dec.1998 - Rather than maintain a byte pointer and a bit offset into
 	* the current byte (and the processing associated with that), we maintain
@@ -343,27 +359,9 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char*image, const 
 	* next code should be defined, then we have set next_code to either
 	* 'eoi_code' or 'clear_code' -- so we'll store useless prefix/suffix data
 	* in a useless place. */
-
-	/* *First,* set up the prefix and length for the next code
-	 (in case code == next_code). */
-		dec[next_code].prefix = prev_code;
-		dec[next_code].nbits  = dec[prev_code].nbits + 1;
-
-		GIF_DEBUG(("%d ", dec[prev_code].nbits));
-
-	/* Use one_code to process code. It's nice that it returns the first
-	 pixel in code: that's what we need. */
-		dec_pix  = one_code(dec, curr_code, dec_pos, image, image_len),
-		dec_pos += dec[curr_code].nbits;
-
-		dec[next_code].suffix = dec_pix;
-
-	/* Special processing if code == next_code: we didn't know code's final
-	* suffix when we called one_code, but we do now.
-	* 7.Mar.2014 -- Avoid error if image has zero width/height. */
-		if (curr_code == next_code && dec_pos <= image_len)
-			image[dec_pos - 1] = dec_pix;
-
+		dec_pos += one_code(dec, dec_pos, prev_code,
+		                    img, img_len, curr_code, next_code);
+	// 7.Mar.2014 -- Avoid error if image has zero width/height.
 	/* Increment next_code except for the 'clear_code' special case (that's
 	 when we're reading at the end of a GIF) */
 		if (next_code != CLEAR_CODE && ++next_code == BUMP_CODE) {
@@ -382,11 +380,11 @@ read_image_data(GReadContext *gctx, Gif_Reader *grr, unsigned char*image, const 
 
 	/* zero-length block reached. */
 	zero_length_block: {
-		int delta = image_len - dec_pos;
+		int delta = img_len - dec_pos;
 		if (delta > 0) {
 			sprintf(buf, "missing %i pixel(s) of image data", delta);
 			emit_read_error(gctx, GE_Error, buf);
-			memset(&image[dec_pos], 0, delta);
+			memset(&img[dec_pos], 0, delta);
 		} else if (delta < -1) {
 			/* One pixel of superfluous data is OK; that could be the
 				code == next_code case. */

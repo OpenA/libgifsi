@@ -155,5 +155,14 @@ public:
 	}
 };
 
+# ifdef DEBUG
+#  include <stdio.h>
+#  define DebugLog(msg) puts(msg)
+#  define DebugPrint(...) printf(__VA_ARGS__)
+# else
+#  define DebugLog(msg)
+#  define DebugPrint(...)
+# endif
+
 # endif
 #endif //_GifSi_IO_H_

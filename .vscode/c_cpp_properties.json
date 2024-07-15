@@ -7,7 +7,7 @@
 				"/usr/local/include/**",
 				"${workspaceFolder}"
 			],
-			"defines": ["WITH_FILE_IO", "WITH_GIF"],
+			"defines": ["WITH_FILE_IO", "WITH_GIF", "DEBUG"],
 			"compilerPath": "/usr/bin/gcc",
 			"cStandard": "c11",
 			"cppStandard": "c++11",

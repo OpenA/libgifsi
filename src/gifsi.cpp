@@ -32,7 +32,7 @@ inline void Stream::delImagesFrom(int sidx, int n/* = 1*/) {
 	m_images.erase(m_images.begin() + sidx, m_images.begin() + (sidx+n));
 };
 
-template<typename T>
+template<class T>
 inline auto Stream::read_magic_number(T &gR) -> eCode
 {
 	eCode ok = {

@@ -9,7 +9,8 @@ namespace GifSi {
 
 	enum Flags {
 		Exclude_Colormap   = 0x1,
-		Exclude_Extensions = 0x2,
+		Exclude_PixelData  = 0x2,
+		Exclude_ExtGarbage = 0x2,
 		Exclude_Images     = 0x8,
 
 		PNG_Source = 0x100,
@@ -65,7 +66,7 @@ public:
 	int count() { return m_map.size(); }
 
 # ifdef WITH_GIF
-	template<typename T> void read_color_table(T&, int ncol);
+	template<class T> void read_color_table(T&, int ncol);
 # endif
 };
 
@@ -81,8 +82,7 @@ class GifSi::Image {
 
 	bool has_interlace:1, has_transparent:1;
 
-	Colormap  m_colors;
-	ExdatList m_raw;
+	Colormap m_colors;
 public:
 
 	Image() {}
@@ -96,7 +96,7 @@ public:
 		m_delay = src.m_delay;
 
 		m_disposal = src.m_disposal;
-		m_cpyflags = exclude_flags;
+		m_cpyflags = m_bpp = 0;
 
 		has_interlace   = src.has_interlace;
 		has_transparent = src.has_transparent;
@@ -104,23 +104,28 @@ public:
 		if (!(exclude_flags & Exclude_Colormap)) {
 			m_colors = src.m_colors;
 		}
-		if (!(exclude_flags & Exclude_Extensions)) {
-			m_raw = src.m_raw;
+		if (!(exclude_flags & Exclude_PixelData) && src.m_pixels) {
+			m_pixels = new unsigned char[width() * height()];
+			m_bpp    = src.m_bpp;
+
+			for (int i = 0; i < width() * height(); i++)
+				m_pixels[i] = src.m_pixels[i];
 		}
 	}
 	~Image() {
-		delete m_pixels;
+		//if (m_pixels)
+		//	delete m_pixels, m_pixels = nullptr;
 	}
 
 	void operator=(const Image& src) {
-		Image(src, src.m_cpyflags);
+		Image(src, 0);
 	}
-	bool hasLocalColors() {
-		return !!m_colors.count();
-	}
-	bool hasEmpty() {
-		return !m_raw.size() && !m_pixels;
-	}
+	bool hasLocalColors() { return !!m_colors.count(); }
+	bool hasEmpty() const { return !m_pixels; }
+
+	int width()  const { return m_width; }
+	int height() const { return m_height; }
+
 	int checkBounds() {
 		// If still zero, error.
 		if (m_width == 0 || m_height == 0)
@@ -134,8 +139,8 @@ public:
 protected:
 	friend Stream;
 #ifdef WITH_GIF
-	template<typename T> void read_gif_image_data(T&, Stream*, exType);
-	template<typename T> void decode_gif_image();
+	template<class T> void read_gif_image_data(T&, Stream*, int, exType);
+	template<class T> auto decode_gif_image(T&) -> int;
 #endif
 };
 
@@ -150,24 +155,28 @@ class GifSi::Stream {
 
 	Colormap  g_colors;
 	ImageList m_images;
+	ExdatList m_extensions;
 public:
 
 	Stream() {}
-	Stream(const Stream& other, unsigned no_copy_flags) {
+	Stream(const Stream& other, unsigned exclude_flags) {
 		m_screenWidth  = other.m_screenWidth;
 		m_screenHeight = other.m_screenHeight;
 		m_loopcount    = other.m_loopcount;
 		m_background   = other.m_background;
-		m_cpyflags     = no_copy_flags;
+		m_cpyflags     = other.m_cpyflags | (exclude_flags & Exclude_ExtGarbage);
 
 		has_bg_color     = other.has_bg_color;
 		has_limit_loops  = other.has_limit_loops;
 		has_local_colors = false;
 
-		if (!(no_copy_flags & Exclude_Colormap)) {
+		if (!(exclude_flags & Exclude_Colormap)) {
 			g_colors = other.g_colors;
 		}
-		if (!(no_copy_flags & Exclude_Images)) {
+		if (!(exclude_flags & Exclude_ExtGarbage)) {
+			m_extensions = other.m_extensions;
+		}
+		if (!(exclude_flags & Exclude_Images)) {
 			m_images = other.m_images;
 			has_local_colors = other.has_local_colors;
 		}
@@ -179,15 +188,18 @@ public:
 	}
 
 	void delImagesFrom(int sidx, int n = 1);
-	void delImage() { m_images.pop_back(); };
+	void delImage() { m_images.pop_back(); }
+	void addExtension(exDat dat) { m_extensions.push_back(dat); }
 	auto addImage() -> int {
 		int i = m_images.size();
 		m_images.resize(i + 1);
 		return i;
-	};
-
-	auto screenWidth () -> unsigned short { return m_screenWidth;  }
-	auto screenHeight() -> unsigned short { return m_screenHeight; }
+	}
+	bool has(Flags fl) const { return m_cpyflags & fl; }
+	int loopsCount  () const { return m_loopcount;     }
+	int imagesCount () const { return m_images.size(); }
+	int screenWidth () const { return m_screenWidth;   }
+	int screenHeight() const { return m_screenHeight;  }
 
 	void setLoopCount(unsigned short l) { m_loopcount = l; }
 	void resizeScreen(unsigned short w, unsigned short h) {
@@ -198,9 +210,9 @@ public:
 	auto read(const char *file) -> eCode;
 
 protected:
-	template<typename T> auto read_magic_number(T&) -> eCode;
+	template<class T> auto read_magic_number(T&) -> eCode;
 #ifdef WITH_GIF
-	template<typename T> auto read_gif_stream(T&) -> int;
+	template<class T> auto read_gif_stream(T&) -> int;
 #endif
 };
 

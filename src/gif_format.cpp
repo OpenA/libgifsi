@@ -5,17 +5,26 @@ using namespace GifSi;
 
 #define MAX_CODE_BITS 12
 #define READ_CODE_MAX 4096
-#define READ_BUF_SIZE 255
+#define READ_BUF_SIZE 256
 #define CALC_COLORS_N(p) (1 << ((p & 0x07) + 1))
 
-template<typename T>
-void Image::read_gif_image_data(T& gR, Stream *stm, exType type)
+#define CLEAR_CODE (1 << min_code_size)
+#define   EOI_CODE (1 << min_code_size | 1)
+#define   BPP_SIZE (1 +  min_code_size)
+
+struct Code {
+	unsigned suffix:8, prefix:12, nbits:12;
+};
+
+template<class T>
+void Image::read_gif_image_data(T& gR, Stream *stm, int imx, exType type)
 {
 	unsigned char  pack, nb;
 	unsigned short loop;
 	struct   exDat ex;
 
 	bool skip = false;
+	  ex.imdx = imx;
 	  ex.type = type;
 	loop=pack = 0;
 
@@ -34,10 +43,8 @@ void Image::read_gif_image_data(T& gR, Stream *stm, exType type)
 		// 0 ~ transparent color doesn't exist
 		has_transparent = (pack & 0x01);
 		m_disposal      = (pack & 0x1C) >> 2;
-# ifdef DEBUG
-		printf("-- GFX delay=%d transparent=%d,%d",
+		DebugPrint("-- GFX delay=%d transparent=%d,%d",
 			m_delay, has_transparent, m_alpha);
-# endif
 		break;
 	case exType::AppExtend:
 		nb      = gR.readUint8(),
@@ -54,11 +61,9 @@ void Image::read_gif_image_data(T& gR, Stream *stm, exType type)
 			if (pack & 0x01)
 				stm->setLoopCount(loop);
 		} else {
-			m_raw.push_back(ex);
+			stm->addExtension(ex);
 		}
-# ifdef DEBUG
-		printf("-- %s #%x loop=%d", ex.data, pack, loop);
-# endif
+		DebugPrint("-- %s #%x loop=%d", ex.data, pack, loop);
 		if (skip)
 			gR.dataRelease(ex.data);
 		break;
@@ -70,21 +75,19 @@ void Image::read_gif_image_data(T& gR, Stream *stm, exType type)
 		m_width  = gR.readUint16() ?: stm->screenWidth();
 		m_height = gR.readUint16() ?: stm->screenHeight();
 		   pack  = gR.readUint8();
-		m_bpp    = gR.readUint8();
+		   skip  = true;
 		// have a local color table
 		if (pack & 0x80)
 			m_colors.read_color_table(gR, CALC_COLORS_N(pack));
 		if (pack & 0x40)
 			has_interlace = true;
-# ifdef DEBUG
-		printf("-- IMAGE <%d,%d>%dx%d bpp=%d colors=%d",
-			m_left, m_top, m_width, m_height, m_bpp, m_colors.count());
-# endif
+		if (!(nb = decode_gif_image(gR)))
+			return;
 		break;
 	case exType::Comment:
 	case exType::Identifer:
 	default: // Unknown
-		skip = m_cpyflags & Exclude_Extensions;
+		skip = stm->has(Exclude_ExtGarbage);
 	}
 # ifdef DEBUG
 	for (loop = 0; (nb = gR.readUint8()); loop++)
@@ -97,58 +100,73 @@ void Image::read_gif_image_data(T& gR, Stream *stm, exType type)
 		else {
 			ex.data = gR.dataExtract(nb);
 			ex.size = nb;
-			m_raw.push_back(ex);
+			stm->addExtension(ex);
 		}
 	}
 # ifdef DEBUG
-	printf(" %s (%s_%s=%d)\n",
+	DebugPrint(" %s (%s_%s=%d)\n",
 		(type == exType::Comment || type == exType::Identifer) &&
 			ex.data ? (const char *)ex.data : ";",
-		(type == exType::iData) ? "IDATA": "BLOCK",
+		(type == exType::iData) ? "IMAF": "BLOCK",
 			skip ? "DROP" : "READ", loop
 	);
 # endif
 }
 
-template<typename T>
-void Image::decode_gif_image() {
+/* returns the count of decoding bits
+ * for increase decode position. */
+static int one_code(
+	struct Code  dec[], int dpos, int pc,
+	unsigned char *img, int imax, int cc, int nc
+) {
+	int e = dec[cc].suffix, s = e,
+		p = dec[cc].prefix, i = 0,
+		l = dec[cc].nbits , k = dec[pc].nbits + 1;
+	// in curr_code == next_code we need prev_code prefix/nbits
+	if (cc == nc)
+		p = pc, l = k;
 
-	unsigned int nb, npix = (unsigned)m_width * (unsigned)m_height;
-	unsigned char *raw;
-
-	for (auto dat : m_raw) {
-		nb  = dat.size;
-		raw = dat.data;
-		if (!(dat.type == exType::iData))
-			continue;
+	for(i = l-2; i >= 0; i--) {
+		s = dec[p].suffix,
+		p = dec[p].prefix;
+		if ((dpos+i) < imax)
+			img[(dpos+i)] = s;
 	}
+	// we don't know code's final suffix so we store 
+	// all possible values and conditionally stored one of then
+	if ((dpos+l-1) < imax)
+		img[(dpos+l-1)] = (cc == nc ? (l ? s : 0) : e);
+	// set up the prefix and nbits for the next code
+	// i think it would be stored like a single word
+	dec[nc].suffix = (l ? s : 0);
+	dec[nc].prefix = pc;
+	dec[nc].nbits  = k;
+
+	return l;
 }
 
-static auto decode_image_data(
-	ExdatList const &raw  , int min_code_size,
-	unsigned char outBuf[], const int outMax
-) -> eCode {
+/* returns number of bytes in last block with EOI code (end-of-image)
+ * so this num is not used for skipping, only for comparing to zero.
+ * (zero means that the block does not contain an EOI and image may be incomplete).*/
+template<class T> auto Image::decode_gif_image(T& gR) -> int
+{
+	signed const   outMax = width() * height();
+	unsigned char *outBuf = new unsigned char[outMax];
 
-	// we need a bit more than READ_BUFFER_SIZE in case a single code is split across blocks
-	unsigned char buf[READ_BUF_SIZE + 5];
-	unsigned int  accm = 0, dec_pix;
+	/* we need a bit more than READ_BUF_SIZE in case a single code is split
+		across blocks */
+	unsigned char buf[READ_BUF_SIZE + 4];
+	unsigned int accm;
 
-	struct {
-		unsigned char  suffix, nbits;
-		unsigned short prefix;
-	} dec[READ_CODE_MAX];
+	struct Code decTab[READ_CODE_MAX];
 
-	int i, bit_len, dec_len, curr_code, old_code, clear_code,
-	    n, bit_pos, dec_pos, next_code, eoi_code, bits_need;
+	int i, next_code, curr_code, bit_pos = 0, decPos = 0,
+		n, prev_code, bits_need, bit_len = 0;
 
-# define CUR_BUMP_CODE (1 << bits_need)
-# define CUR_CODE_CALC(m) ((m >> (bit_pos % 8)) & (CUR_BUMP_CODE - 1))
+#define BUMP_CODE   (1 << bits_need)
+#define CODE_GET(m) (m >> (bit_pos % 8) & (BUMP_CODE - 1))
 
-	for (i = 0; i < 256; i++) {
-		dec[i].suffix = i,
-		dec[i].nbits  = 1,
-		dec[i].prefix = 0xC114;
-	}
+	int min_code_size = gR.readUint8();
 	if (min_code_size >= MAX_CODE_BITS) {
 		// too big
 		min_code_size = MAX_CODE_BITS - 1;
@@ -156,15 +174,24 @@ static auto decode_image_data(
 		// too small
 		min_code_size = 2;
 	}
-	bits_need  = (1 + min_code_size),
-	clear_code = curr_code = (1 << min_code_size),
-	 next_code = eoi_code  = (clear_code + 1);
-
+	// initialize `n` and `decTab`
+	for (n = i = 0; i < READ_CODE_MAX; i++) {
+		decTab[i].prefix = 0xC11;
+		decTab[i].suffix = (unsigned char)i;
+		decTab[i].nbits  = 1;
+	}
+	// initialize codes
+	bits_need = BPP_SIZE;
+	next_code = EOI_CODE;
+	curr_code = CLEAR_CODE;
 	/* Thus the 'Read in the next data block.' code below will be invoked on the
 	   first time through: exactly right! */
-	while (1) {
+	
+	DebugPrint("-- IMAGE <%d,%d>%dx%d bpp=%d colors=%d\n====================\nidata blocks decode ",
+		m_left, m_top, m_width, m_height, BPP_SIZE, m_colors.count());
+	do {
 
-	/* GET A CODE INTO THE 'code' VARIABLE.
+	/* GET A CODE INTO THE 'curr_code' VARIABLE.
 	*
 	* 9.Dec.1998 - Rather than maintain a byte pointer and a bit offset into
 	* the current byte (and the processing associated with that), we maintain
@@ -175,114 +202,80 @@ static auto decode_image_data(
 
 		if ((bit_pos + bits_need) > bit_len) {
 			// Read in the next data block.
-			for (; (bit_pos + bits_need) > bit_len; bit_len += n * 8) {
-				// Read in the next data block.
-				if (bit_pos >= 8) {
-					// Need to shift down the upper, unused part of 'buffer'
-					i = bit_pos / 8;
-					buf[0] = buf[i];
-					buf[1] = buf[i + 1];
-					bit_pos -= i * 8;
-					bit_len -= i * 8;
-				}
-				//if (!(n = gR.readUint8())) {
-				//	b.pos = b.len = -1;
-				//	break;
-				//} else
-				//	gR.readChunk(nb, &buf[b.len / 8]);
+			if (bit_pos >= 8) {
+				// Need to shift down the upper, unused part of `buf`
+				i = bit_pos / 8;
+				buf[0] = buf[i];
+				buf[1] = buf[i+1];
+				bit_pos -= i * 8;
+				bit_len -= i * 8;
 			}
-			//b = read_image_block(gR, bits_need, buffer, b);
-			//if (b.len == -1 || b.pos == -1)
-			//	goto zero_length_block;
+			if ((n = gR.readUint8())) {
+				gR.readChunk(n, &buf[bit_len / 8]);
+				bit_len += n * 8;
+			}
+			DebugPrint(".");
+			continue;
 		}
 		i = bit_pos / 8;
-		accm  = buf[i];
+		accm  = buf[i],
 		accm |= buf[i+1] << 8;
 		if (bits_need >= 8)
 			accm |= buf[i+2] << 16;
-		 bit_pos += bits_need;
-		 old_code = curr_code,
-		curr_code = CUR_CODE_CALC(accm);
 
-	// Check for special/bad codes:
-	// clear, eoi, or a code that is too large.
-		if (curr_code == clear_code) {
-			next_code = eoi_code;
-			bits_need = min_code_size + 1;
+		prev_code = curr_code,
+		curr_code = CODE_GET(accm);
+		bit_pos  += bits_need;
+
+	/* CHECK FOR SPECIAL OR BAD CODES: clear_code, eoi_code, or a code that is
+	* too large. */
+		if (curr_code == CLEAR_CODE) {
+			DebugPrint("| (%d) CLEAR\n", n);
+			bits_need = BPP_SIZE;
+			next_code = EOI_CODE;
 			continue;
-		} else if (curr_code == eoi_code) {
+		} else if (curr_code == EOI_CODE) {
+			DebugPrint("@ (%d) EOI", n);
 			break;
-		} else if (curr_code > next_code && next_code && next_code != clear_code) {
-	// code > next_code: a (hopefully recoverable) error.
+		} else if (curr_code > next_code && next_code && next_code != CLEAR_CODE) {
+	/* code > next_code: a (hopefully recoverable) error.
 
-	// Bug fix, 5/27: Do this even if old_code == clear_code, and set code
-	// to 0 to prevent errors later. (If we didn't zero code, we'd later set
-	// old_code = code; then we had old_code >= next_code; so the prefixes
-	// array got all screwed up!)
+	* Bug fix, 5/27: Do this even if old_code == clear_code, and set code
+	* to 0 to prevent errors later. (If we didn't zero code, we'd later set
+	* old_code = code; then we had old_code >= next_code; so the prefixes
+	* array got all screwed up!)
 
-	// Bug fix, 4/12/2010: It is not an error if next_code == clear_code.
-	// This happens at the end of a large GIF: see the next comment
-	// (If no meaningful next code should be defined....).
+	* Bug fix, 4/12/2010: It is not an error if next_code == clear_code.
+	* This happens at the end of a large GIF: see the next comment ("If no
+	* meaningful next code should be defined...."). */
 			curr_code = 0;
 		}
-	// PROCESS THE CURRENT CODE and define the next code. If no meaningful
-	// next code should be defined, then we have set next_code to either
-	// `eoi_code` or `clear_code` -- so we'll store useless prefix/suffix data
-	// in a useless place. */
-
-	// First, set up the prefix and length for the next code
-	// (in case `curr_code` == `next_code`).
-		dec[next_code].prefix = old_code;
-		dec[next_code].nbits  = dec[old_code].nbits + 1;
-
-	// Use one_code to process code. It's nice that it returns the first
-	// pixel in code: that's what we need.
-	 	dec_len = dec[curr_code].nbits;
-		dec_pix = dec[curr_code].prefix;
-
-	// get the first pixel in the code, which, since we walked backwards
-	// through the code, was the last suffix we processed.
-		for(n = i = 0; i < dec_len; i++, dec_pos++) {
-			n = dec[curr_code + i].prefix;
-			if (outMax > dec_pos)
-				outBuf[dec_pos] = dec[n].suffix;
-		}
-	// Special processing if code == next_code: we didn't know code's final
-	// suffix when we called one_code, but we do now.
+	/* PROCESS THE CURRENT CODE and define the next code. If no meaningful
+	* next code should be defined, then we have set next_code to either
+	* 'eoi_code' or 'clear_code' -- so we'll store useless prefix/suffix data
+	* in a useless place. */
+		decPos += one_code(decTab, decPos, prev_code,
+		                   outBuf, outMax, curr_code, next_code);
 	// 7.Mar.2014 -- Avoid error if image has zero width/height.
-		if (curr_code == next_code && (dec_pos - 1) < outMax)
-			outBuf[dec_pos - 1] = dec_pix;
-
-	// Increment next_code except for the `clear_code` special case
-	// (that's  when we're reading at the end of a GIF)
-		if (next_code != clear_code && (next_code += 1) == CUR_BUMP_CODE) {
+	/* Increment next_code except for the 'clear_code' special case (that's
+	 when we're reading at the end of a GIF) */
+		if (next_code != CLEAR_CODE && ++next_code == BUMP_CODE) {
 			if (bits_need < MAX_CODE_BITS)
 				bits_need++;
 			else
-				next_code = clear_code;
+				next_code = CLEAR_CODE;
 		}
-	}
-	// zero-length block reached.
-	//zero_length_block: {
-	//	long delta = (long)(gctx->maximage - gctx->image) - (long)decode_pos;
-	//	char buf[READ_BUFFER_SIZE];
-	//	if (delta > 0) {
-	//		sprintf(buf, "missing %ld %s of image data", delta,
-	//				delta == 1 ? "pixel" : "pixels");
-	//		emit_read_error(gctx, GE_Error, buf);
-	//		memset(&gctx->image[decode_pos], 0, delta);
-	//	} else if (delta < -1) {
-	//		// One pixel of superfluous data is OK; that could be the
-	//		// code == next_code case.
-	//		sprintf(buf, "%ld superfluous pixels of image data", -delta);
-	//		emit_read_error(gctx, GE_Warning, buf);
-	//	}
-	//}
-# undef CUR_BUMP_CODE
-# undef CUR_CODE_CALC
+	} while (n > 0);
+
+	m_pixels = outBuf;
+	m_bpp = BPP_SIZE;
+#ifdef DEBUG
+	if (!n) DebugPrint(" ; zero block reached (%i miss)\n", (outMax - decPos));
+#endif
+	return n;
 }
 
-template<typename T>
+template<class T>
 void Colormap::read_color_table(T &gR, int ncol)
 {
 	Color col;
@@ -295,7 +288,7 @@ void Colormap::read_color_table(T &gR, int ncol)
 	}
 }
 
-template<typename T>
+template<class T>
 auto Stream::read_gif_stream(T &gR) -> int
 {
 	unsigned char pack, unk_block = 0;
@@ -314,27 +307,23 @@ auto Stream::read_gif_stream(T &gR) -> int
 		g_colors.read_color_table(gR, CALC_COLORS_N(pack));
 		has_bg_color = true;
 	}
-# ifdef DEBUG
-	printf("\nSCREEN: bg=%d,%dx%d colors=%d\n",
+	DebugPrint("\nSCREEN: bg=%d,%dx%d colors=%d\n",
 		m_background, m_screenWidth, m_screenHeight, g_colors.count());
-# endif
 	do {
 		switch ((pack = gR.readUint8())) {
 		case ',': // frame
-# ifdef DEBUG
-			printf("FRAME:%d\n", imx);
-# endif
-			/**/m_images[imx].read_gif_image_data(gR, this, exType::iData);
+			DebugPrint("FRAME:%d\n", imx);
+			/* read and decode idata blocks for last image on stack
+			* */m_images[imx].read_gif_image_data(gR, this, imx, exType::iData);
 			if (m_images[imx].hasLocalColors())
 				has_local_colors = true;
 			imx = addImage();
 			break;
 		case '!': // extension
 			pack = gR.readUint8();
-# ifdef DEBUG
-			printf("\nEXT@%x\n", pack);
-# endif
-			m_images[imx].read_gif_image_data(gR, this, (
+			DebugPrint("\nEXT@%x\n", pack);
+			// only F9 needs for img, all others moves to stream
+			m_images[imx].read_gif_image_data(gR, this, imx, (
 				pack == 0xCE ? exType::Comment    :
 				pack == 0xFE ? exType::Identifer  :
 				pack == 0xF9 ? exType::GfxControl :

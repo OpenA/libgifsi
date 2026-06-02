@@ -5,19 +5,15 @@
 namespace GifSi {
 	class Image;
 	class Stream;
-	class Colormap;
+	class Text;
+	union Frame;
 
-	enum Flags {
-		Exclude_Colormap   = 0x1,
-		Exclude_PixelData  = 0x2,
-		Exclude_ExtGarbage = 0x2,
-		Exclude_Images     = 0x8,
+	enum Consts {
+		No_Copy_Colors = 0x1,
+		No_Copy_Frames = 0x2,
 
-		PNG_Source = 0x100,
-		Gif_Source = 0x200,
-
-		Max_ScreenWidth  = 0xFFFFu,
-		Max_ScreenHeight = 0xFFFFu,
+		Max_Screen_H = (unsigned short)-1,
+		Max_Screen_W = (unsigned short)-1,
 	};
 
 	enum Disposal {
@@ -32,187 +28,198 @@ namespace GifSi {
 		struct { unsigned char r,g,b,a; };
 		struct { unsigned int  value:24, flags:8; };
 	};
-	// external data types
-	enum exType {
-		Unknown = 0,
-		AppExtend,
-		GfxControl,
-		Identifer,
-		Comment,
-		iData,
-	};
-	// structured external data
-	struct exDat {
-		unsigned char const *data;
-		unsigned int type:8, imdx:24, size;
+	struct Rect {
+		  signed short x,y;
+		unsigned short w,h;
 	};
 	// error code and warn level
-	enum eLevel {
-		OK = 0, Warning, Error, Fatal
+	enum eStatus {
+		EvrethingOK,
+	// Error:
+		UnknownStream,
+		NotSupported,
+		CorruptedData
 	};
-	struct eCode {
-		enum eLevel wlvl:6;
-		unsigned code:10, wcnt:16;
-	};
-	typedef std::vector<Image> ImageList;
-	typedef std::vector<exDat> ExdatList;
 }
 
-class GifSi::Colormap {
-	std::vector<Color> m_map;
+class GifSi::Text {
+// null-terminated text
+	const char *m_text;
+// bounds rect
+	struct Rect m_rect;
+// text measurments
+	unsigned char m_lineH, m_strokeColor, m_fillColor, m_lSpace;
+	unsigned char m_charW, m_strokeWidth, m_bgColor;
+// font style
+	struct __attribute__((packed)) {
+		bool italic:1, bold:1, underline:1;
+		bool strike:1, caps:1, overline :1;
+	} m_style;
 public:
-	int indexOf(const Color, int sidx = 0);
-	int add(Color);
-	int count() { return m_map.size(); }
+	Text() {}
 
-# ifdef WITH_GIF
-	template<class T> void read_color_table(T&, int ncol);
-# endif
+	friend Stream;
 };
 
 class GifSi::Image {
 
-	  signed short m_left,  m_top;
-	unsigned short m_width, m_height;
+	unsigned char *m_pixels;
+// 8-byte bounds
+	struct Rect m_rect;
+// 8-byte props
+	unsigned short m_delay, m_sic;
+	unsigned char  m_alpha, m_eic, m_bpp;
+// external data
+	struct __attribute__((packed)) {
 
-	unsigned char *m_pixels, m_bpp;
+		enum Disposal disposal:3;
 
-	unsigned short m_delay;
-	unsigned char  m_alpha, m_disposal:3, m_cpyflags:3;
-
-	bool has_interlace:1, has_transparent:1;
-
-	Colormap m_colors;
+		bool interlace:1, transparent:1;
+	} m_prop;
 public:
 
 	Image() {}
-	Image(const Image& src, unsigned exclude_flags) {
-		m_left   = src.m_left;
-		m_top    = src.m_top;
-		m_width  = src.m_width;
-		m_height = src.m_height;
-
+	Image(const Image& src, bool empty) {
+		m_rect  = src.m_rect;
 		m_alpha = src.m_alpha;
 		m_delay = src.m_delay;
+		m_prop  = src.m_prop;
+		m_bpp   = src.m_bpp;
 
-		m_disposal = src.m_disposal;
-		m_cpyflags = m_bpp = 0;
+		if (!empty && src.m_pixels) {
+			//m_pixels = (unsigned char *)std::malloc(size());
 
-		has_interlace   = src.has_interlace;
-		has_transparent = src.has_transparent;
-
-		if (!(exclude_flags & Exclude_Colormap)) {
-			m_colors = src.m_colors;
-		}
-		if (!(exclude_flags & Exclude_PixelData) && src.m_pixels) {
-			m_pixels = new unsigned char[width() * height()];
-			m_bpp    = src.m_bpp;
-
-			for (int i = 0; i < width() * height(); i++)
+			for (int i = 0; i < size(); i++)
 				m_pixels[i] = src.m_pixels[i];
 		}
 	}
-	~Image() {
-		//if (m_pixels)
-		//	delete m_pixels, m_pixels = nullptr;
-	}
-
-	void operator=(const Image& src) {
-		Image(src, 0);
-	}
-	bool hasLocalColors() { return !!m_colors.count(); }
-	bool hasEmpty() const { return !m_pixels; }
-
-	int width()  const { return m_width; }
-	int height() const { return m_height; }
+	int bpp   () const { return m_bpp; }
+	int size  () const { return width() * height(); }
+	int left  () const { return m_rect.x; }
+	int top   () const { return m_rect.y; }
+	int width () const { return m_rect.w; }
+	int height() const { return m_rect.h; }
 
 	int checkBounds() {
+		int w = m_rect.w, x = m_rect.x;
+		int h = m_rect.h, y = m_rect.y;
 		// If still zero, error.
-		if (m_width == 0 || m_height == 0)
+		if (w == 0 || h == 0)
 			return 201;
 		// If position out of range, error.
-		if ((m_left + m_width) > Max_ScreenWidth || (m_top + m_height) > Max_ScreenHeight)
+		if ((x + w) > Max_Screen_W || (y + h) > Max_Screen_H)
 			return 202;
 		return 0;
 	}
 
+	unsigned char &operator[](int i) {
+		return m_pixels[i];
+	}
 protected:
 	friend Stream;
-#ifdef WITH_GIF
-	template<class T> void read_gif_image_data(T&, Stream*, int, exType);
-	template<class T> auto decode_gif_image(T&) -> int;
-#endif
+};
+
+union GifSi::Frame {
+
+	Image image;
+	Text  text;
+
+	enum Type {
+		TypeNone, TypeImage, TypeText, TypeMeta
+	};
+	struct __attribute__((packed)) Self {
+		void *_ptr;
+
+		struct Rect _r;
+
+		unsigned int _0,_1,_2,_3:24;
+
+		enum Type _typ:8;
+	} self;
+	
+	Frame() {
+		self._typ = TypeNone;
+		self._ptr = nullptr;
+	}
+	~Frame();
+	void setup(enum Type, unsigned int);
+	Type type () const { return self._typ; }
+	bool empty() const { return !self._ptr; }
 };
 
 class GifSi::Stream {
 
-	unsigned short m_screenWidth, m_screenHeight;
-	unsigned short m_loopcount;
-	unsigned char  m_background, m_cpyflags:5;
-	
-	bool has_limit_loops :1, has_bg_color :1,
-	     has_local_colors:1;
+	std::vector<Frame> g_frames;
+	std::vector<Color> g_colors;
 
-	Colormap  g_colors;
-	ImageList m_images;
-	ExdatList m_extensions;
+	unsigned short g_screenWidth, g_screenHeight;
+	unsigned short g_loopsCount;
+	unsigned char  g_background;
+
+	struct __attribute__((packed)) Flags {
+		bool has_limit_loops :1, no_metadata:1;
+		bool has_local_colors:1, has_bg_fill:1;
+	} g_flags;
+
 public:
 
-	Stream() {}
-	Stream(const Stream& other, unsigned exclude_flags) {
-		m_screenWidth  = other.m_screenWidth;
-		m_screenHeight = other.m_screenHeight;
-		m_loopcount    = other.m_loopcount;
-		m_background   = other.m_background;
-		m_cpyflags     = other.m_cpyflags | (exclude_flags & Exclude_ExtGarbage);
 
-		has_bg_color     = other.has_bg_color;
-		has_limit_loops  = other.has_limit_loops;
-		has_local_colors = false;
+	Stream() {
+		g_colors.reserve(255);
+		g_frames.reserve(100);
+		g_flags = {false,false,false,false};
+	}
+	Stream(const Stream& other, enum Consts fl) : Stream() {
+		g_screenWidth  = other.g_screenWidth;
+		g_screenHeight = other.g_screenHeight;
+		g_loopsCount   = other.g_loopsCount;
+		g_background   = other.g_background;
+		g_flags        = other.g_flags;
 
-		if (!(exclude_flags & Exclude_Colormap)) {
+		if (!(fl & No_Copy_Colors)) {
 			g_colors = other.g_colors;
 		}
-		if (!(exclude_flags & Exclude_ExtGarbage)) {
-			m_extensions = other.m_extensions;
-		}
-		if (!(exclude_flags & Exclude_Images)) {
-			m_images = other.m_images;
-			has_local_colors = other.has_local_colors;
+		if (!(fl & No_Copy_Frames)) {
+			g_frames = other.g_frames;
 		}
 	}
-	~Stream() {}
+	~Stream(){};
 
-	void operator=(const Stream& other) {
-		Stream(other, other.m_cpyflags);
+	auto  addColor(Color) -> int;
+	auto findColor(Color, int sidx = 0, int cn = 0) -> int;
+
+	void delFramesFrom(int sidx, int n = 1);
+	void addFramesTo  (int sidx, int n = 1);
+	bool hasFrameEmpty(int sidx) {
+		return !g_frames.at(sidx).self._ptr;
 	}
 
-	void delImagesFrom(int sidx, int n = 1);
-	void delImage() { m_images.pop_back(); }
-	void addExtension(exDat dat) { m_extensions.push_back(dat); }
-	auto addImage() -> int {
-		int i = m_images.size();
-		m_images.resize(i + 1);
-		return i;
+	void delFrame() { g_frames.pop_back(); }
+	auto addFrame() -> int {
+		int i = g_frames.size();
+		/*---*/ g_frames.resize(i + 1);
+		return  i;
 	}
-	bool has(Flags fl) const { return m_cpyflags & fl; }
-	int loopsCount  () const { return m_loopcount;     }
-	int imagesCount () const { return m_images.size(); }
-	int screenWidth () const { return m_screenWidth;   }
-	int screenHeight() const { return m_screenHeight;  }
 
-	void setLoopCount(unsigned short l) { m_loopcount = l; }
+	int loopsCount  () const { return g_loopsCount;    }
+	int framesCount () const { return g_frames.size(); }
+	int screenWidth () const { return g_screenWidth;   }
+	int screenHeight() const { return g_screenHeight;  }
+
+	void setLoopCount(unsigned short l) { g_loopsCount = l; }
 	void resizeScreen(unsigned short w, unsigned short h) {
-		m_screenWidth  = w,
-		m_screenHeight = h;
+		g_screenWidth  = w,
+		g_screenHeight = h;
 	}
-	auto read(const unsigned char *data, const int len) -> eCode;
-	auto read(const char *file) -> eCode;
+	auto read(const unsigned char *data, const int len) -> eStatus;
+	auto read(const char *file) -> eStatus;
 
 protected:
-	template<class T> auto read_magic_number(T&) -> eCode;
+	template<class T> auto read_magic_number(T&) -> eStatus;
 #ifdef WITH_GIF
-	template<class T> auto read_gif_stream(T&) -> int;
+	template<class T> auto read_gif_stream(T&) -> eStatus;
+	template<class T> void read_gif_color_table(T&, int);
+	template<class T> void read_gif_image_data (T&, int, unsigned);
 #endif
 };
 

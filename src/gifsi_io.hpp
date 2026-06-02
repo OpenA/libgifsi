@@ -1,29 +1,50 @@
 #ifndef _GifSi_IO_H_
-# include <vector>
+# include <cstdlib>
 # define _GifSi_IO_H_
 
 class DataWriter {
 
-	std::vector<unsigned char> m_data;
-public:
-	DataWriter(unsigned capacity = 1024) {
-		m_data.reserve( capacity );
-	}
-	unsigned char const* data() const { return m_data.data(); }
-	unsigned int         size() const { return m_data.size(); }
+	unsigned char *m_data;
+	unsigned int   m_size, m_cap;
 
-	void writeChunk(int n, unsigned char const buf[]) {
-		for (int i = 0; i < n; i++)
-			m_data.push_back(buf[i]);
+public:
+	enum {
+		InitCapacity = 1024,
+		MaxBlockSize = 256
+	};
+	DataWriter(int nb = 0, int rb = InitCapacity) {
+		m_cap  = (m_size = nb) ?: rb;
+		m_data = (unsigned char *)std::malloc(m_cap);
 	}
-	void writeUint8 (unsigned char  c) { m_data.push_back(c); }
+	auto data () const -> unsigned char* { return m_data; }
+	auto size () const -> unsigned long  { return m_size; }
+	void clear() {
+		std::free(m_data);
+		m_size = m_cap = 0;
+		m_data = nullptr;
+	}
+	void extendCap(int n) {
+		int k = 0;
+		while ((n + m_size) > (k + m_cap))
+			k += MaxBlockSize;
+		if (k != 0) {
+			m_data = (unsigned char *)std::realloc(m_data, m_cap += k);
+		}
+	}
+	void writeChunk(int n, unsigned char const *buf) {
+		 extendCap(n);
+		for (int i = 0; i < n; i++) {
+			m_data[m_size++] = buf[i];
+		}
+	}
+	void writeUint8 (unsigned char  c) { writeNumber(c); }
 	void writeUint16(unsigned short h) { writeNumber(h); }
 	void writeUint32(unsigned int   i) { writeNumber(i); }
 
 	template <typename T> void writeNumber(T v) {
-		unsigned i = m_data.size();
-		m_data.resize(i + sizeof(T));
-		((T*)&m_data[i])[0] = v;
+		int i = m_size;
+		(void)( m_size += sizeof(T) );
+		((T *) &m_data[i])[0] = v;
 	}
 };
 
@@ -43,7 +64,7 @@ public:
 	bool isEnd() const { return m_pos >= m_len; }
 
 	void skipBytes(int n) { m_pos += n; }
-	void readChunk(int n, unsigned char buf[]) {
+	void readChunk(int n, unsigned char *buf) {
 		for (int i = 0; i < n; i++)
 			buf[i] = m_pos < m_len ? m_data[m_pos++] : 0;
 	}
@@ -51,71 +72,62 @@ public:
 		return m_data[m_pos++];
 	}
 	auto readUint16() -> unsigned short {
-		auto h = dataBegin<unsigned short>()[0];
+		auto h = data<unsigned short>()[0];
 		m_pos += sizeof(short);
 		return h;
 	}
 	auto readUint32() -> unsigned int {
-		auto i = dataBegin<unsigned int>()[0];
+		auto i = data<unsigned int>()[0];
 		m_pos += sizeof(int);
 		return i;
 	}
-	template <typename T> const T *dataBegin() {
+	template <typename T> const T * data() const {
 		return (const T *)&m_data[m_pos];
-	}
-	auto dataExtract(int n) -> unsigned char const * {
-		auto b = dataBegin<unsigned char>();
-		m_pos += n;
-		return b;
-	}
-	void dataRelease(const unsigned char *buf) {
-		(void)buf;
 	}
 };
 
-# ifdef WITH_FILE_IO
-#  include <stdio.h>
+# if defined(WITH_FILE_IO) || defined(DEBUG)
+# include <cstdio>
 
 class FileReader {
 
 	FILE *m_io;
+	bool is_eof;
 public:
 	FileReader(const char *file) {
 		m_io = fopen(file, "rb");
+		is_eof = false;
 	}
 	~FileReader() {
 		fclose(m_io);
 	}
-	bool isEnd() const { return feof(m_io) == EOF; }
+	bool isEnd() const { return is_eof; }
 
 	void skipBytes(int n) {
-		if (n > fseek(m_io, n, SEEK_CUR));
+		if (fseek(m_io, n, SEEK_CUR))
+			is_eof = feof(m_io) == EOF;
 	}
 	void readChunk(int n, unsigned char buf[]) {
 		for (int i = fread(buf, sizeof(char), n, m_io); i < n; i++)
-			buf[i] = 0;
+			buf[i] = 0, is_eof = true;
 	}
 	auto readUint8() -> unsigned char {
 		int c = getc(m_io);
-		return c == EOF ? 0 : c;
+		if (c == EOF)
+			c = 0, is_eof = true;
+		return c;
 	}
 	auto readUint16() -> unsigned short {
 		unsigned short h = 0;
-		if (!fread(&h, sizeof(short), 1, m_io));
+		if (fread(&h, sizeof(short), 1, m_io) != 1)
+			is_eof = true;
 		return h;
 	}
 	auto readUint32() -> unsigned int {
 		unsigned int i = 0;
-		if (!fread(&i, sizeof(int), 1, m_io));
+		if (fread(&i, sizeof(int), 1, m_io) != 1)
+			is_eof = true;
 		return i;
-	}
-	auto dataExtract(int n) -> unsigned char* {
-		auto buf = new unsigned char[n+1];
-		readChunk(n, buf); buf[n] = 0;
-		return buf;
-	}
-	void dataRelease(const unsigned char *buf) {
-		delete buf;
 	}
 };
 
@@ -155,14 +167,10 @@ public:
 	}
 };
 
-# ifdef DEBUG
-#  include <stdio.h>
-#  define DebugLog(msg) puts(msg)
-#  define DebugPrint(...) printf(__VA_ARGS__)
-# else
-#  define DebugLog(msg)
-#  define DebugPrint(...)
 # endif
-
+# ifdef DEBUG
+#  define DebugLog(...) fprintf(stderr, __VA_ARGS__)
+# else
+#  define DebugLog(...)
 # endif
 #endif //_GifSi_IO_H_

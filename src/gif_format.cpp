@@ -1,194 +1,221 @@
 
 #include "gifsi.hpp"
+#include "gifsi_io.hpp"
 
 using namespace GifSi;
 
-#define MAX_CODE_BITS 12
-#define READ_CODE_MAX 4096
-#define READ_BUF_SIZE 256
-#define CALC_COLORS_N(p) (1 << ((p & 0x07) + 1))
-
-#define CLEAR_CODE (1 << min_code_size)
-#define   EOI_CODE (1 << min_code_size | 1)
-#define   BPP_SIZE (1 +  min_code_size)
-
+/* Read specification
+ * https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+*/
 struct Code {
-	unsigned suffix:8, prefix:12, nbits:12;
+
+	const enum BitRange {
+		MinCodeBits = 2,
+		MaxCodeBits = 12,
+		MaxCodeRead = 4096
+	} m_bpp;
+
+	struct {
+		unsigned char  suffix, nbits;
+		unsigned short prefix;
+	} m_tab[MaxCodeRead];
+
+	signed int m_pos;
+
+	Code(int min_code_size = 0) : m_bpp(
+		min_code_size >= MaxCodeBits ? (BitRange)(MaxCodeBits-1) :
+		min_code_size <  MinCodeBits ? MinCodeBits : (BitRange)min_code_size
+	) {
+		// initialize `decoder Tab`
+		for (int i = 0; i < MaxCodeRead; i++) {
+			m_tab[i].prefix = 0xC11;
+			m_tab[i].suffix = i;
+			m_tab[i].nbits  = 1;
+		}
+		m_pos = 0;
+	}
+
+	auto _BPP  () -> int { return (1 +  m_bpp); }
+	auto _CLEAR() -> int { return (1 << m_bpp); }
+	auto _EOI  () -> int { return (1 << m_bpp | 1); }
+
+	template<class R> static int dec_gif_image(Image&, R&);
+	/*~~~~~~~~~~~~~~~~~~~*/ void dec_one_pixel(Image&, int, int, int);
+};
+
+struct Pack {
+	unsigned char n_value, b_size;
+
+	bool scan_next;
+
+	auto n_colors() -> unsigned short { return      1 << ((n_value & 0x07) + 1); };
+	auto disposal() -> enum Disposal  { return (Disposal)((n_value & 0x1C) >> 2); }
+
+	bool hasColorTable() const { return n_value & 0x80; }
+	bool hasInterlace () const { return n_value & 0x40; }
+	bool hasAlphaColor() const { return n_value & 0x01; }
+	bool hasLoopsLimit() const { return n_value & 0x01; }
+
+	void addNColors(unsigned int nc) { n_value |= (nc - 1) >> 8; }
+};
+
+union AppExt {
+	struct { unsigned long long lnum; };
+	struct { unsigned char buf[8]; };
+	struct { const    char str[8]; };
+
+	bool operator==(AppExt other) {
+		return lnum == other.lnum;
+	}
+	bool operator==(const char *lit) {
+		for (int i = 0; i < 8; i++) {
+			if (str[i] != lit[i])
+				return false;
+		}
+		return true;
+	}
 };
 
 template<class T>
-void Image::read_gif_image_data(T& gR, Stream *stm, int imx, exType type)
+void Stream::read_gif_image_data(T& gR, int idx, unsigned int type)
 {
-	unsigned char  pack, nb;
-	unsigned short loop;
-	struct   exDat ex;
-
-	bool skip = false;
-	  ex.imdx = imx;
-	  ex.type = type;
-	loop=pack = 0;
-
-# define IS_APP_NETSCAPE(b) (b[0]=='N'&& b[1]=='E'&& b[2]=='T'&& b[3]=='S'&& b[4]=='C'&& b[5]=='A'&& b[6]=='P'&& b[7]=='E')
-# define IS_APP_ANIMEXTS(b) (b[0]=='A'&& b[1]=='N'&& b[2]=='I'&& b[3]=='M'&& b[4]=='E'&& b[5]=='X'&& b[6]=='T'&& b[7]=='S')
+	auto ext = AppExt{0};
+	auto pck = Pack{0,0,true};
+	auto &frm = g_frames.at(idx);
+	auto &img = frm.image;
 
 	switch (type) {
-	case exType::GfxControl:
-		    nb  = gR.readUint8(),
-		  skip  = true,
-		  pack  = gR.readUint8(),
-		m_delay = gR.readUint16(),
-		m_alpha = gR.readUint8();
-		if ( nb > 4 )
-			gR.skipBytes(nb - 4);
+	case 0xF9: // Graphics Control
+		pck.b_size  = gR.readUint8 ();
+		pck.n_value = gR.readUint8 ();
+		img.m_delay = gR.readUint16();
+		img.m_alpha = gR.readUint8 ();
 		// 0 ~ transparent color doesn't exist
-		has_transparent = (pack & 0x01);
-		m_disposal      = (pack & 0x1C) >> 2;
-		DebugPrint("-- GFX delay=%d transparent=%d,%d",
-			m_delay, has_transparent, m_alpha);
+		img.m_prop.transparent = pck.hasAlphaColor();
+		img.m_prop.disposal    = pck.disposal();
+
+		DebugLog("-- GFX delay=%d alpha=%d transparent=%d disposal=%d\n",
+			img.m_delay, img.m_alpha, pck.hasAlphaColor(), pck.disposal());
+		if (pck.b_size > 4)
+			gR.skipBytes(pck.b_size - 4);
 		break;
-	case exType::AppExtend:
-		nb      = gR.readUint8(),
-		ex.data = gR.dataExtract(nb);
-		ex.size = nb;
-		// Read the Netscape loop extension.
-		if (nb >= 8 && (IS_APP_NETSCAPE(ex.data) || IS_APP_ANIMEXTS(ex.data))) {
-			nb   = gR.readUint8(),
-			skip = true,
-			pack = gR.readUint8(),
-			loop = gR.readUint16();
-			if (nb > 3)
-				gR.skipBytes(nb - 3);
-			if (pack & 0x01)
-				stm->setLoopCount(loop);
-		} else {
-			stm->addExtension(ex);
-		}
-		DebugPrint("-- %s #%x loop=%d", ex.data, pack, loop);
-		if (skip)
-			gR.dataRelease(ex.data);
+	case 0xFF: // App Extension
+		if ((pck.b_size = gR.readUint8()) >= 8) {
+			gR.readChunk(8, ext.buf);
+			gR.skipBytes(pck.b_size - 8);
+			// Read the Netscape loop extension.
+			if (ext == "NETSCAPE" || ext == "ANIMEXTS") {
+				pck.b_size   = gR.readUint8();
+				pck.n_value  = gR.readUint8();
+				g_loopsCount = gR.readUint16();
+				if (pck.b_size > 3)
+					gR.skipBytes(pck.b_size - 3);
+				if (pck.hasLoopsLimit())
+					g_flags.has_limit_loops = true;
+			}
+			DebugLog("-- %s loops=%d,%d\n", ext.buf, g_loopsCount, pck.hasLoopsLimit());
+		} else
+			gR.skipBytes(pck.b_size);
 		break;
-	case exType::iData:
+	case 0x100:
 	// Mainline GIF engines (Firefox, etc.) missing image width/height
 	// substitute the global screen width/height instead.
-		m_left   = gR.readUint16();
-		m_top    = gR.readUint16();
-		m_width  = gR.readUint16() ?: stm->screenWidth();
-		m_height = gR.readUint16() ?: stm->screenHeight();
-		   pack  = gR.readUint8();
-		   skip  = true;
+		img.m_rect.x = gR.readUint16();
+		img.m_rect.y = gR.readUint16();
+		img.m_rect.w = gR.readUint16() ?: g_screenWidth;
+		img.m_rect.h = gR.readUint16() ?: g_screenHeight;
+		pck.n_value  = gR.readUint8();
+		// interlaced image
+		if (pck.hasInterlace())
+			img.m_prop.interlace = true;
 		// have a local color table
-		if (pack & 0x80)
-			m_colors.read_color_table(gR, CALC_COLORS_N(pack));
-		if (pack & 0x40)
-			has_interlace = true;
-		if (!(nb = decode_gif_image(gR)))
-			return;
-		break;
-	case exType::Comment:
-	case exType::Identifer:
-	default: // Unknown
-		skip = stm->has(Exclude_ExtGarbage);
-	}
-# ifdef DEBUG
-	for (loop = 0; (nb = gR.readUint8()); loop++)
-# else
-	// scan over image data block by block.
-	while (( nb = gR.readUint8() ))
-# endif
-	{
-		if (skip) gR.skipBytes(nb);
-		else {
-			ex.data = gR.dataExtract(nb);
-			ex.size = nb;
-			stm->addExtension(ex);
+		if (pck.hasColorTable()) {
+			g_flags.has_local_colors = true;
+			img.m_sic = g_colors.size();
+			img.m_eic = pck.n_colors() - 1;
+			read_gif_color_table(gR, pck.n_colors());
 		}
+		img.m_bpp = gR.readUint8();
+		frm.setup(Frame::TypeImage, img.size());
+		// ~~
+		DebugLog("-- IMAGE <%d,%d>%dx%d colors=%d\n",
+			img.left(), img.top(), img.width(), img.height(), pck.n_colors());
+		if (!(pck.b_size = Code::dec_gif_image(frm.image, gR)))
+			pck.scan_next = false;
+		break;
+	case 0xFE: // Identifer
+	case 0xCE: // Comment
+		break;
+	default:   // Unknown
+		pck.scan_next = true;
+	}
+	// scan over image data block by block.
+	for(ext.lnum = 0; pck.scan_next && (pck.b_size = gR.readUint8());) {
+		ext.lnum += ( pck.b_size );
+		gR.skipBytes( pck.b_size );
 	}
 # ifdef DEBUG
-	DebugPrint(" %s (%s_%s=%d)\n",
-		(type == exType::Comment || type == exType::Identifer) &&
-			ex.data ? (const char *)ex.data : ";",
-		(type == exType::iData) ? "IMAF": "BLOCK",
-			skip ? "DROP" : "READ", loop
-	);
+	if (pck.scan_next)
+		DebugLog(type == 0x100 ? "..v [%lld bytes after end]\n" : "  |-- bytes_drop=%lld\n", ext.lnum);
 # endif
 }
 
 /* returns the count of decoding bits
  * for increase decode position. */
-static int one_code(
-	struct Code  dec[], int dpos, int pc,
-	unsigned char *img, int imax, int cc, int nc
-) {
-	int e = dec[cc].suffix, s = e,
-		p = dec[cc].prefix, i = 0,
-		l = dec[cc].nbits , k = dec[pc].nbits + 1;
+void Code::dec_one_pixel(Image &pix, int pc, int cc, int nc)
+{
+	int e = m_tab[cc].suffix, s = e,
+		p = m_tab[cc].prefix, i = 0,
+		l = m_tab[cc].nbits,
+		k = m_tab[pc].nbits + 1;
 	// in curr_code == next_code we need prev_code prefix/nbits
 	if (cc == nc)
 		p = pc, l = k;
 
 	for(i = l-2; i >= 0; i--) {
-		s = dec[p].suffix,
-		p = dec[p].prefix;
-		if ((dpos+i) < imax)
-			img[(dpos+i)] = s;
+		s = m_tab[p].suffix,
+		p = m_tab[p].prefix;
+		if ((m_pos+i) < pix.size())
+			pix[(m_pos+i)] = s;
 	}
 	// we don't know code's final suffix so we store 
 	// all possible values and conditionally stored one of then
-	if ((dpos+l-1) < imax)
-		img[(dpos+l-1)] = (cc == nc ? (l ? s : 0) : e);
+	m_pos += l;
+	if ((m_pos-1) < pix.size())
+		pix[(m_pos-1)] = (cc == nc ? (l ? s : 0) : e);
 	// set up the prefix and nbits for the next code
 	// i think it would be stored like a single word
-	dec[nc].suffix = (l ? s : 0);
-	dec[nc].prefix = pc;
-	dec[nc].nbits  = k;
-
-	return l;
+	m_tab[nc].suffix = (l ? s : 0);
+	m_tab[nc].prefix = pc;
+	m_tab[nc].nbits  = k;
 }
 
 /* returns number of bytes in last block with EOI code (end-of-image)
  * so this num is not used for skipping, only for comparing to zero.
  * (zero means that the block does not contain an EOI and image may be incomplete).*/
-template<class T> auto Image::decode_gif_image(T& gR) -> int
+template<class T> int Code::dec_gif_image(Image& pix, T& gR)
 {
-	signed const   outMax = width() * height();
-	unsigned char *outBuf = new unsigned char[outMax];
+	auto dTab = Code(pix.bpp());
 
 	/* we need a bit more than READ_BUF_SIZE in case a single code is split
 		across blocks */
-	unsigned char buf[READ_BUF_SIZE + 4];
+	unsigned char buf[DataWriter::MaxBlockSize + 4];
 	unsigned int accm;
 
-	struct Code decTab[READ_CODE_MAX];
-
-	int i, next_code, curr_code, bit_pos = 0, decPos = 0,
-		n, prev_code, bits_need, bit_len = 0;
+	int i, next_code, curr_code, bit_pos = 0,
+	    n, prev_code, bits_need, bit_len = 0;
 
 #define BUMP_CODE   (1 << bits_need)
 #define CODE_GET(m) (m >> (bit_pos % 8) & (BUMP_CODE - 1))
 
-	int min_code_size = gR.readUint8();
-	if (min_code_size >= MAX_CODE_BITS) {
-		// too big
-		min_code_size = MAX_CODE_BITS - 1;
-	} else if (min_code_size < 2) {
-		// too small
-		min_code_size = 2;
-	}
-	// initialize `n` and `decTab`
-	for (n = i = 0; i < READ_CODE_MAX; i++) {
-		decTab[i].prefix = 0xC11;
-		decTab[i].suffix = (unsigned char)i;
-		decTab[i].nbits  = 1;
-	}
+	i = n = accm = 0;
 	// initialize codes
-	bits_need = BPP_SIZE;
-	next_code = EOI_CODE;
-	curr_code = CLEAR_CODE;
+	bits_need = dTab._BPP();
+	next_code = dTab._EOI();
+	curr_code = dTab._CLEAR();
 	/* Thus the 'Read in the next data block.' code below will be invoked on the
 	   first time through: exactly right! */
-	
-	DebugPrint("-- IMAGE <%d,%d>%dx%d bpp=%d colors=%d\n====================\nidata blocks decode ",
-		m_left, m_top, m_width, m_height, BPP_SIZE, m_colors.count());
+	DebugLog("=======(bpp:%d)========|\n idata blocks decode ", dTab._BPP());
 	do {
 
 	/* GET A CODE INTO THE 'curr_code' VARIABLE.
@@ -214,7 +241,7 @@ template<class T> auto Image::decode_gif_image(T& gR) -> int
 				gR.readChunk(n, &buf[bit_len / 8]);
 				bit_len += n * 8;
 			}
-			DebugPrint(".");
+			DebugLog(".");
 			continue;
 		}
 		i = bit_pos / 8;
@@ -229,15 +256,15 @@ template<class T> auto Image::decode_gif_image(T& gR) -> int
 
 	/* CHECK FOR SPECIAL OR BAD CODES: clear_code, eoi_code, or a code that is
 	* too large. */
-		if (curr_code == CLEAR_CODE) {
-			DebugPrint("| (%d) CLEAR\n", n);
-			bits_need = BPP_SIZE;
-			next_code = EOI_CODE;
+		if (curr_code == dTab._CLEAR()) {
+			DebugLog("| (%d) CLEAR\n", n);
+			bits_need = dTab._BPP();
+			next_code = dTab._EOI();
 			continue;
-		} else if (curr_code == EOI_CODE) {
-			DebugPrint("@ (%d) EOI", n);
+		} else if (curr_code == dTab._EOI()) {
+			DebugLog("@ (%d) EOI\n", n);
 			break;
-		} else if (curr_code > next_code && next_code && next_code != CLEAR_CODE) {
+		} else if (curr_code > next_code && next_code && next_code != dTab._CLEAR()) {
 	/* code > next_code: a (hopefully recoverable) error.
 
 	* Bug fix, 5/27: Do this even if old_code == clear_code, and set code
@@ -254,29 +281,26 @@ template<class T> auto Image::decode_gif_image(T& gR) -> int
 	* next code should be defined, then we have set next_code to either
 	* 'eoi_code' or 'clear_code' -- so we'll store useless prefix/suffix data
 	* in a useless place. */
-		decPos += one_code(decTab, decPos, prev_code,
-		                   outBuf, outMax, curr_code, next_code);
+		dTab.dec_one_pixel(pix, prev_code, curr_code, next_code);
 	// 7.Mar.2014 -- Avoid error if image has zero width/height.
 	/* Increment next_code except for the 'clear_code' special case (that's
 	 when we're reading at the end of a GIF) */
-		if (next_code != CLEAR_CODE && ++next_code == BUMP_CODE) {
-			if (bits_need < MAX_CODE_BITS)
+		if (next_code != dTab._CLEAR() && (next_code += 1) == BUMP_CODE) {
+			if (bits_need < Code::MaxCodeBits)
 				bits_need++;
 			else
-				next_code = CLEAR_CODE;
+				next_code = dTab._CLEAR();
 		}
 	} while (n > 0);
 
-	m_pixels = outBuf;
-	m_bpp = BPP_SIZE;
 #ifdef DEBUG
-	if (!n) DebugPrint(" ; zero block reached (%i miss)\n", (outMax - decPos));
+	DebugLog("..x [%i missed idata blocks]\n", (pix.size() - dTab.m_pos));
 #endif
 	return n;
 }
 
 template<class T>
-void Colormap::read_color_table(T &gR, int ncol)
+void Stream::read_gif_color_table(T &gR, int ncol)
 {
 	Color col;
 	for(int i = 0; i < ncol; i++) {
@@ -284,67 +308,62 @@ void Colormap::read_color_table(T &gR, int ncol)
 		col.g = gR.readUint8();
 		col.b = gR.readUint8();
 		col.a = 0;
-		m_map.push_back(col);
+		g_colors.push_back(col);
 	}
 }
 
 template<class T>
-auto Stream::read_gif_stream(T &gR) -> int
+auto Stream::read_gif_stream(T &gR) -> eStatus
 {
-	unsigned char pack, unk_block = 0;
-	int  imx  = addImage(), ecode = 0;
-	bool done = false;
+	auto pack = Pack{0, 0, true};
+	auto ecode = eStatus::EvrethingOK;
+
+	int n_bg_colors, unk_block = 0, idx = addFrame();
 
 	// don't care about screen w/h
-	m_screenWidth  = gR.readUint16();
-	m_screenHeight = gR.readUint16();
-	        pack   = gR.readUint8();
-	m_background   = gR.readUint8();
+	g_screenWidth  = gR.readUint16();
+	g_screenHeight = gR.readUint16();
+	pack.n_value   = gR.readUint8 ();
+	g_background   = gR.readUint8 ();
+	n_bg_colors    = pack.n_colors();
 	// don't care about pixel aspect ratio
 	gR.skipBytes(1);
 	// have a global color table
-	if (pack & 0x80) { 
-		g_colors.read_color_table(gR, CALC_COLORS_N(pack));
-		has_bg_color = true;
+	if (pack.hasColorTable()) {
+		read_gif_color_table(gR, n_bg_colors);
+		g_flags.has_bg_fill = true;
 	}
-	DebugPrint("\nSCREEN: bg=%d,%dx%d colors=%d\n",
-		m_background, m_screenWidth, m_screenHeight, g_colors.count());
+	DebugLog("\nSCREEN: %dx%d fill=%d colors=%d\n",
+		g_screenWidth, g_screenHeight, g_background , n_bg_colors);
 	do {
-		switch ((pack = gR.readUint8())) {
+		switch ((pack.b_size = gR.readUint8())) {
 		case ',': // frame
-			DebugPrint("FRAME:%d\n", imx);
-			/* read and decode idata blocks for last image on stack
-			* */m_images[imx].read_gif_image_data(gR, this, imx, exType::iData);
-			if (m_images[imx].hasLocalColors())
-				has_local_colors = true;
-			imx = addImage();
+			DebugLog("FRAME:%d\n", idx);
+			// read and decode idata blocks for last image on stack
+			read_gif_image_data(gR, idx, 0x100);
+			idx = addFrame();
 			break;
 		case '!': // extension
-			pack = gR.readUint8();
-			DebugPrint("\nEXT@%x\n", pack);
+			pack.b_size = gR.readUint8();
+			DebugLog("\nEXT@%x\n", pack.b_size);
 			// only F9 needs for img, all others moves to stream
-			m_images[imx].read_gif_image_data(gR, this, imx, (
-				pack == 0xCE ? exType::Comment    :
-				pack == 0xFE ? exType::Identifer  :
-				pack == 0xF9 ? exType::GfxControl :
-				pack == 0xFF ? exType::AppExtend  :
-				               exType::Unknown));
+			read_gif_image_data(gR, idx, pack.b_size);
 			break;
 		case ';': // terminator
-			pack = gR.readUint8();
-			done = true;
+			pack.b_size = gR.readUint8();
+			pack.scan_next = false;
 			break;
 		case '\0':
 			break;
 		default:
 			if (++unk_block > 20) {
-				ecode = 309;
-				done = true;
+				ecode = eStatus::CorruptedData;
+				pack.scan_next = false;
 			}
 		}
-	} while (!gR.isEnd() && !done);
+	} while (!gR.isEnd() && pack.scan_next);
 
-	if ( m_images[imx].hasEmpty())
-		delImage();
+	if (g_frames.at(idx).empty())
+		delFrame();
 	return ecode;
 }

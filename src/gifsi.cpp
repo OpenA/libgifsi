@@ -8,38 +8,60 @@
 
 using namespace GifSi;
 
-inline auto Colormap::indexOf(const Color col, int sidx/* = 0*/) -> int {
-	const auto c = col.value;
-	for ( auto a = m_map.begin()+sidx; a < m_map.end(); sidx++, a++ ) {
-		if (c == a[0].value)
+void Frame::setup(enum Type _t, unsigned int _sz) {
+	self._ptr = _sz ? std::malloc(_sz) : self._ptr;
+	self._typ = _t;
+}
+Frame::~Frame() {
+	bool sucess = false;
+	if ((sucess = !empty()))
+		std::free(self._ptr), self._ptr = nullptr;
+	DebugLog("END :: %d,%d ::\n", type(), sucess);
+}
+
+inline auto Stream::findColor(Color col, int sidx/*= 0*/, int cn/*= 0*/) -> int {
+	auto sp = g_colors.begin() + sidx;
+	auto ep = g_colors.end();
+
+	ep = (cn > 0 ? sp : ep) + cn;
+
+	for (auto c = col.value; sp < ep; sidx++, sp++) {
+		if (c == sp[0].value)
 			return sidx;
 	}
 	return -1;
 }
 
-inline auto Colormap::add(Color col) -> int {
-	int idx = indexOf(col);
+inline auto Stream::addColor(Color col) -> int {
+	int idx = findColor(col);
 	if (idx == -1) {
-		idx = m_map.size();
-		m_map.push_back(col);
+		idx = g_colors.size();
+		/***/ g_colors.push_back(col);
 	}
 	return idx;
 }
 
-inline void Stream::delImagesFrom(int sidx, int n/* = 1*/) {
+inline void Stream::delFramesFrom(int sidx, int n/*= 1*/) {
+	auto  sp = g_frames.begin();
+	int   sz = g_frames.size();
 	if (sidx < 0)
-		sidx = m_images.size() + sidx;
-	m_images.erase(m_images.begin() + sidx, m_images.begin() + (sidx+n));
-};
+		sidx = sz + sidx;
+	g_frames.erase(sp + sidx, sp + (sidx+n));
+}
+
+inline void Stream::addFramesTo(int sidx, int n/*= 1*/)  {
+	auto  nf = std::vector<Frame>(n);
+	auto  sp = g_frames.begin();
+	int   sz = g_frames.size();
+	if (sidx < 0)
+		sidx = sz + sidx;
+	g_frames.insert(sp + sidx, nf.begin(), nf.end());
+}
 
 template<class T>
-inline auto Stream::read_magic_number(T &gR) -> eCode
+inline auto Stream::read_magic_number(T &gR) -> eStatus
 {
-	eCode ok = {
-		.wlvl = eLevel::OK,
-		.code = 0,
-		.wcnt = 0
-	};
+	auto ok = eStatus::EvrethingOK;
 	unsigned char magic[4];
 	// read magic number
 	for (int i = 0; i < 4; i++)
@@ -48,29 +70,29 @@ inline auto Stream::read_magic_number(T &gR) -> eCode
 		magic[0] == 'G' &&
 		magic[1] == 'I' &&
 		magic[2] == 'F'
-	) { 
+	) {
 # ifdef WITH_GIF
 		gR.skipBytes(2); // GIF8 + 9a
-		ok.code = read_gif_stream(gR);
+		ok = read_gif_stream(gR);
 # else
-		ok.wlvl = eLevel::Error;
-		ok.code = 101; // gif not supported
+		ok = eStatus::NotSupported;
 # endif
 	} else {
-		ok.wlvl = eLevel::Error;
-		ok.code = 100; // unknown stream
+		ok = eStatus::UnknownStream;
 	}
 	return ok;
 }
 
-auto Stream::read(const unsigned char *data, const int len) -> eCode {
+auto Stream::read(const unsigned char *data, const int len) -> eStatus {
 	DataReader gR(data, len);
 	return read_magic_number(gR);
 }
 
-auto Stream::read(const char *file) -> eCode {
+auto Stream::read(const char *file) -> eStatus {
 #ifdef WITH_FILE_IO
 	FileReader gR(file);
 	return read_magic_number(gR);
+#else
+	return eStatus::NotSupported;
 #endif
 }
